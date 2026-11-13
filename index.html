@@ -119,6 +119,15 @@ input[type=range]{accent-color:var(--line2)}
   #time{left:8px;right:8px;bottom:8px;gap:8px}#goal{display:none}#spd button{padding:5px 6px;font-size:11.5px}
   #outBtn{display:block}#flyBtn,#sndBtn{display:none}#time .ico{padding:5px 8px}
   #panoBox{bottom:66px}
+  /* 휴대폰: 위 막대 — 날씨 줄은 한 줄 전체 폭, 넘치면 옆으로 밀기 */
+  #env{order:2;flex-basis:100%;margin-left:0;flex-wrap:wrap;gap:6px}#wx{flex-wrap:wrap;gap:6px}#nowBtn{white-space:nowrap}
+  /* 휴대폰: 조작·결과 판 접기 — 제목 줄(결과는 핵심 숫자)만 남김. 제목 줄을 누르면 펴짐 */
+  #ctrl h2{display:flex;align-items:center;justify-content:space-between;cursor:pointer;font-size:19px}
+  #ctrl h2::after{content:"접기 ▾";font-size:12px;font-weight:600;color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:3px 10px}
+  body.mini #ctrl h2::after{content:"펼치기 ▴"}
+  body.mini #ctrl{padding-top:12px;padding-bottom:12px}body.mini #ctrl>:not(h2){display:none!important}body.mini #ctrl h2{margin:0}body.mini #env{display:none}
+  body.mini #out{max-height:92px;overflow:hidden}
+  #kpis{cursor:pointer}
 }
 </style>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
@@ -1843,5 +1852,10 @@ yaw = 0.6; pitch = 0.9; dist = 260;
   const st = document.createElement("style"); st.textContent = ".hud,#menu,#wx,#end,#load{display:none!important}"; document.head.appendChild(st);
   setTimeout(() => { start(SCN.find(s => s.id === q.get("bare")) || VIEWS2[0]); if (q.has("season")) { ENV.season = q.get("season"); applyEnv(); } }, 300); } }
 __readyRes();
+{ const mob = () => matchMedia("(max-width:760px)").matches, mini = v => document.body.classList.toggle("mini", v);   /* 휴대폰 판 접기 */
+  document.getElementById("ctrl").addEventListener("click", e => { if (!mob()) return; if (e.target.closest("h2")) mini(!document.body.classList.contains("mini")); else if (e.target.closest("button") && !e.target.closest("#wx")) mini(true); });
+  document.getElementById("out").addEventListener("click", e => { if (mob() && e.target.closest("#kpis")) mini(!document.body.classList.contains("mini")); });
+  renderer.domElement.addEventListener("pointerdown", () => { if (mob()) mini(true); });
+  for (const b of document.querySelectorAll("#routeList")) b.addEventListener("click", () => mini(false)); }
 { const T = document.getElementById("top"), f = () => document.documentElement.style.setProperty("--topH", (T.offsetTop + T.offsetHeight) + "px"); new ResizeObserver(f).observe(T); f(); }   /* 위 막대 높이에 맞춰 좌우 판 위치 */
 </script></body></html>
