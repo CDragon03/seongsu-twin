@@ -1765,15 +1765,18 @@ SC.evac = Object.assign(Object.create(SC.crowd), { tools: "땅을 누르면 대�
     this.heat = new THREE.Mesh(new THREE.PlaneGeometry(1000, 1000).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ map: this.ht, transparent: true, depthWrite: false, opacity: 0.85 })); this.heat.renderOrder = 3; scene.add(this.heat); extra.push(this.heat); this.hT = 0;
     this.center = DAELIM ? { x: DAELIM.x, y: DAELIM.y } : { x: player.x, y: player.y }; this.hc0 = { x: this.center.x - 500, y: this.center.y - 500 }; this.heat.position.copy(V(this.center.x, this.center.y, 0.6));
     player.x = this.center.x; player.y = this.center.y; this.dist0 = 460; dist = 460;
-    this.OS = openSpaces().filter(o => Math.hypot(o.x - this.center.x, o.y - this.center.y) < 900); this.pins = [];
-    ctrl(`<b>대피</b><div class="cr"><span>대피 인원</span><select id="v_n"><option>1000</option><option selected>2000</option><option>4000</option></select></div>
+    this.kind = "official"; this.pins = [];
+    this.setKind = k => { this.kind = k; const off = (city.shelters || []).filter(o => o.k === "outdoor" && Math.hypot(o.x - this.center.x, o.y - this.center.y) < 1300).map(o => ({ x: o.x, y: o.y, area: o.a, name: o.n, off: true }));
+      this.OS = k === "official" && off.length ? off : openSpaces().filter(o => Math.hypot(o.x - this.center.x, o.y - this.center.y) < 900); if (k === "official" && !off.length) msg("근처에 좌표가 확인된 지정 대피장소가 없어 빈터 후보를 씁니다", 3); };
+    this.setKind("official");
+    ctrl(`<b>대피</b><div class="cr"><span>대피 장소</span><select id="v_k"><option value="official" selected>성동구 지정 지진옥외대피장소(공식)</option><option value="auto">빈터 자동 후보</option></select></div><div class="cr"><span>대피 인원</span><select id="v_n"><option>1000</option><option selected>2000</option><option>4000</option></select></div>
       <div class="cr"><span>속도</span><select id="v_s"><option value="1">실제 속도</option><option value="2" selected>2배</option><option value="4">4배</option></select></div>
       <div class="cr"><button id="v_go" class="btn2">대피 시작</button><button id="v_clr" class="btn2">대피 장소 초기화</button></div>
       <div class="lg">${RHO_C.map(([t, c], i) => `<span><i style="background:${hex6(c)}"></i>${i === 5 ? "5명↑" : (i ? RHO_C[i - 1][0] : 0) + "~" + t + "명"}</span>`).join("")}</div>
       <div id="v_info" class="note"></div>
-      <div class="note"><b>공식 자료</b> · 서울 지진 옥외대피장소 1,533개소(2025-03, 서울연구원 인용 보도). 행정안전부 「지진옥외대피소」·「민방위대피소」 자료는 공공데이터포털 인증키가 있어야 받을 수 있어 아직 못 넣었습니다.</div>
+      <div class="note"><b>공식 자료</b> · 「서울특별시_성동구_지진옥외대피장소 현황」(2026-07-23, 공공데이터포털, 이용 제한 없음) 57곳 중 시설 이름으로 위치가 확인된 곳만 씀(OpenStreetMap 이름 검색, 같은 좌표가 겹치는 곳은 뺌). 동쪽 광진구 쪽은 성동구 자료에 없어 비어 있음. 서울 전체 지진 옥외대피장소 1,533개소(2025-03 보도).</div>
       <div class="note">대피 장소는 건물 윤곽에서 20m 이상 떨어진 1,500m² 이상 빈터를 자동으로 찾은 <b>후보</b>입니다(행정안전부 지정 대피소 자료 아님, 큰길이 들어갈 수 있음). 사람은 반경 500m 길 위에 고르게 놓고 가장 가까운 장소로 걷습니다. 걷는 속도는 Weidmann(1993) 밀도-속도 식.</div>`);
-    $("v_n").onchange = e => { this.N = +e.target.value; this.prep(); };
+    $("v_n").onchange = e => { this.N = +e.target.value; this.prep(); }; $("v_k").onchange = e => { this.setKind(e.target.value); this.prep(); };
     this.ch = new LiveChart([{ label: "대피 완료(%)", color: "#4caf50", unit: "%" }, { label: "5명/m²↑", color: "#9b2fd0", y2: true, fill: false, unit: "명" }], { h: 160, xt: "경과(초)", ymax: 100 }); this.cT = 0; $("v_s").onchange = e => this.mult = +e.target.value; $("v_go").onclick = () => this.go();
     $("v_clr").onclick = () => { this.OS = []; this.prep(); msg("땅을 눌러 대피 장소를 정하세요", 2); };
     this.prep(); },
@@ -1785,7 +1788,8 @@ SC.evac = Object.assign(Object.create(SC.crowd), { tools: "땅을 누르면 대�
     this.goalN = [...new Set(this.OS.map(o => nearNode(o.x, o.y, 80)).filter(i => i >= 0))];
     this.Dto = this.goalN.length ? dijkstra(this.goalN) : null; this.Dex = this.Dto;
     const reach = this.Dto ? this.Dto.filter(d => d < Infinity).length : 0;
-    $("v_info").innerHTML = this.goalN.length ? `대피 장소 <b>${this.OS.length}곳</b> · 「대피 시작」을 누르세요` : "대피 장소가 없습니다 · 땅을 눌러 정하세요"; },
+    const nm = this.OS.filter(o => o.name).map(o => `${o.name}(${Math.round(o.area).toLocaleString()}m²)`);
+    $("v_info").innerHTML = this.goalN.length ? `대피 장소 <b>${this.OS.length}곳</b>${nm.length ? " — " + nm.join(" · ") : ""} · 「대피 시작」을 누르세요` : "대피 장소가 없습니다 · 땅을 눌러 정하세요"; },
   go() { if (!this.Dto) return; this.prep(); const H = new Map(), K = (x, y) => (Math.floor(x / 1.5) + 4096) * 8192 + Math.floor(y / 1.5) + 4096;
     this.src = NODES.map((n, i) => i).filter(i => NADJ[i].length && this.Dto[i] > 30 && this.Dto[i] < Infinity && Math.hypot(NODES[i].x - this.center.x, NODES[i].y - this.center.y) < 500);
     let tries = 0; while (this.A.length < this.N && tries++ < this.N * 6) this.spawn(H, K);

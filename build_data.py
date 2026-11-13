@@ -156,7 +156,14 @@ if os.path.exists(_PJ):
     for k, n in (("xwalks", "xw"), ("stoplines", "sl"), ("tlights", "tl"), ("rsigns", "rs"), ("cctvs", "cc"), ("bollards", "bo"), ("ymj_bollards", "yb")): STREET[n] = [rr(r) for r in _P.get(k, [])]
     STREET["rt"] = [rr(r) for r in _P.get("roadtext", []) + _P.get("ymj_text", [])]
     print("거리 소품", {k: len(v) for k, v in STREET.items()})
-out = {"stations": stations, "trees": TREES, "street": STREET, "exits2": exits2, "buildings": B, "roads": R, "alleys": [r2(v) for t_ in AL for v in t_], "ways": W_,
+# 대피장소: 성동구 지진옥외대피장소 현황(2026-07-23)·임시주거시설(2025-09-12), 공공데이터포털 파일(제한 없음). 좌표는 시설 이름으로 OSM Nominatim 에서 찾은 것만(같은 좌표 겹치면 뺌)
+_SJ = os.path.join(D, "data", "shelters", "shelters.json"); SHEL = []
+if os.path.exists(_SJ):
+    import collections as _co
+    _S = [o for o in json.load(open(_SJ, encoding="utf-8")) if o.get("how") == "이름"]; _c = _co.Counter((round(o["x"]), round(o["y"])) for o in _S)
+    SHEL = [{"k": o["kind"], "n": o["name"], "t": o["type"], "a": o["area"], "c": o["cap"], "x": o["x"], "y": o["y"]} for o in _S if _c[(round(o["x"]), round(o["y"]))] == 1]
+    print("대피장소", len(SHEL))
+out = {"stations": stations, "trees": TREES, "street": STREET, "shelters": SHEL, "exits2": exits2, "buildings": B, "roads": R, "alleys": [r2(v) for t_ in AL for v in t_], "ways": W_,
        "ground": {"img": "ground.jpg", "corners": GR["corners"]}, "exits": EX, "viaduct": V,
        "start": [r2(CX), r2(CY)], "source": "건물: 국토교통부 GIS건물통합정보(빠진 147동은 OpenStreetMap 윤곽·높이 추정) · 도로: OpenStreetMap · 바닥: 국토지리정보원 정사영상 2025 · 가로수: 서울시 가로수 위치정보 2026"}
 json.dump(out, open(os.path.join(G, "city.json"), "w", encoding="utf-8"), ensure_ascii=False, separators=(",", ":"))
