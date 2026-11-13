@@ -1777,8 +1777,20 @@ SC.evac = Object.assign(Object.create(SC.crowd), { tools: "땅을 누르면 대�
 
 SC.free = { hp: false, tools: "자유롭게 걷기 · V 항공 보기 · G 자유 비행 · 2호선이 고가 위를 다닙니다",
   init() { for (let i = 0; i < 110; i++) spawnWalker({ rmax: 220 }); msg("일반 보기 · 성수동을 자유롭게 돌아보세요", 2.5); },
-  update(dt) { for (const w of NPC) { stepWalker(w, dt, w.sp); collide(w, 0.35); showActor(w, true, dt, 1); }
-    setRows([["보행자", NPC.length + "명"], ["시간", fmt(T)]]); $("goal").textContent = "일반 보기 · 목표 없음"; },
+  update(dt) { const px = player.x, py = player.y;
+    for (const w of NPC) { stepWalker(w, dt, w.sp);
+      const dx = w.x - px, dy = w.y - py, d = Math.hypot(dx, dy);   // 나를 뚫고 지나가지 않게: 1.2m 안이면 옆으로 비켜 감
+      if (d < 1.2 && !fly && !air) { const k = (1.2 - d) / Math.max(d, 0.05); w.x += dx * k * 0.6 - dy / Math.max(d, 0.05) * 0.35 * dt * 3; w.y += dy * k * 0.6 + dx / Math.max(d, 0.05) * 0.35 * dt * 3; }
+      collide(w, 0.35); showActor(w, true, dt, 1); }
+    // 차에 치임: 다니는 차가 내 자리를 지나면(차는 피하지 않음) 교통사고 화면으로 — 물리 계산·긴급 출동
+    if (!fly && !air && !this.hitLock) for (const o of TRAFFIC.cars) { const c = wayAt(o.w.p, o.L, o.s, o.dir > 0 ? o.lane : -o.lane), a = wayAt(o.w.p, o.L, Math.max(0, o.s - 1), 0), b = wayAt(o.w.p, o.L, Math.min(o.T, o.s + 1), 0);
+      const L = Math.hypot(b.x - a.x, b.y - a.y) || 1, fx = (b.x - a.x) / L * o.dir, fy = (b.y - a.y) / L * o.dir, ex = px - c.x, ey = py - c.y, along = ex * fx + ey * fy, lat = -ex * fy + ey * fx;
+      if (along > 1.2 && along < 2.9 && Math.abs(lat) < 1.15) { this.hitLock = true; const kmh = o.v * 3.6, sc = SCN.find(q => q.id === "crash");
+        msg(`차에 치였습니다(약 ${Math.round(kmh)} km/h) · 교통사고 화면으로 바뀝니다`, 3);
+        setTimeout(() => { this.hitLock = false; start(sc); const C = SC.crash; C.mode = "blind"; C.kmh = kmh < 40 ? 30 : kmh < 55 ? 50 : 60; C.gapSet = true; C.gap = 9;
+          if ($("k_m")) { $("k_m").value = "blind"; $("k_v").value = String(C.kmh); $("k_g").value = 9; $("k_gv").textContent = "9 m"; }
+          const go = () => { if (!C.world) return setTimeout(go, 200); C.pickSpot(px, py); C.go(); }; go(); }, 700); break; } }
+    setRows([["보행자", NPC.length + "명"], ["시간", fmt(T)]]); $("goal").textContent = "일반 보기 · 목표 없음 · 큰길에 들어가면 차에 치일 수 있습니다"; },
   marks() { return NPC.map(w => [w.x, w.y, "#cfd3d8", 2.5]); } };
 SC.pano360 = { pano: true, hp: false, tools: "마우스로 끌어 둘러보기 · 휠 확대 · 아래 버튼으로 지점 이동",
   init() {
