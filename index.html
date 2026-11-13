@@ -195,7 +195,7 @@ const sun = new THREE.DirectionalLight(0xfff1dc, 2.2); sun.castShadow = true;
 sun.shadow.mapSize.set(2048, 2048); const sc = sun.shadow.camera; sc.left = -70; sc.right = 70; sc.top = 70; sc.bottom = -70; sc.far = 500;
 scene.add(sun, sun.target);
 const FOGB = { near: 120, far: 650 };   /* 날씨·시간대가 정한 안개(땅에 선 눈높이 기준) */
-function setMood(sky, fogFar, hemiI, sunI) { scene.background.set(sky); scene.fog.color.set(sky); scene.fog.far = fogFar; FOGB.far = fogFar; hemi.intensity = hemiI; sun.intensity = sunI; }
+function setMood(sky, fogFar, hemiI, sunI) { if (scene.background && scene.background.isColor) scene.background.set(sky); else if (SC.pano360 && SC.pano360.prevBg) SC.pano360.prevBg.set(sky); scene.fog.color.set(sky); scene.fog.far = fogFar; FOGB.far = fogFar; hemi.intensity = hemiI; sun.intensity = sunI; }
 // ══ 계절·날씨: 봄·여름·가을·겨울(해 높이·하늘·가로수 색·눈 쌓임) + 맑음·비·눈 ══
 const ENV = { season: "summer", weather: "clear", time: "day", snow: 0, wet: 0 };
 const SEASON = { spring: { ko: "봄", date: [4, 5], sky: 0xc5d4e0, hemi: 0.17, sun: 3.3 }, summer: { ko: "여름", date: [6, 15], sky: 0xaec8de, hemi: 0.15, sun: 3.5 },
@@ -216,7 +216,9 @@ function applyEnv() { snowify(scene); const se = SEASON[ENV.season], w = ENV.wea
   timeEnv();
   if (window.__sky && window.__sky.material.uniforms) { const u = window.__sky.material.uniforms; for (const k of Object.keys(u)) if (u[k].value && u[k].value.isColor) u[k].value.lerp(new THREE.Color(sky), 0.0); }
   SNOW_U.value = ENV.season === "winter" ? Math.max(ENV.snow, 0.75) : ENV.snow; treeColors(); if (window.__treesGLB) seasonTrees();
-  for (const b of document.querySelectorAll("#wx button")) b.classList.toggle("on", b.dataset.s === ENV.season || b.dataset.w === ENV.weather || b.dataset.t === ENV.time); }
+  for (const b of document.querySelectorAll("#wx button")) { b.classList.toggle("on", b.dataset.s === ENV.season || b.dataset.w === ENV.weather || b.dataset.t === ENV.time);
+    if (b.dataset.w) { const ok = WX_OK[ENV.season].includes(b.dataset.w); b.disabled = !ok; b.style.opacity = ok ? "" : "0.32"; b.title = ok ? "" : `${SEASON[ENV.season].ko}에는 고를 수 없음`; } } }
+const WX_OK = { spring: ["clear", "rain"], summer: ["clear", "rain"], autumn: ["clear", "rain"], winter: ["clear", "rain", "snow"] };   // 계절에 맞는 날씨만(눈은 겨울)
 // 눈 쌓임: 위를 향한 면(지붕·땅·도로·차 위)을 하얗게 — 모든 표준 재질 셰이더에 한 줄 끼움
 const SNOW_U = { value: 0 }, WET_U = { value: 0 };
 THREE.ShaderChunk.normal_fragment_maps += `
@@ -273,7 +275,7 @@ function timeEnv() {   // applyEnv 안에서 부름: 해·하늘·빛을 시간�
   else if (t === "night") { SUN_DIR = new THREE.Vector3(-0.35, 0.75, 0.55).normalize();   // 달빛 방향(고정)
     night = 1; sunCol = 0x9fb4ff; if (u) { u.top.value.set(0x04070e); u.bot.value.set(0x18213a); } setMood(0x141c30, 420, 0.05, 0.16); renderer.toneMappingExposure = 1.0; }
   else { if (u) { u.top.value.copy(SKY_DEF.top); u.bot.value.copy(SKY_DEF.bot); } renderer.toneMappingExposure = 0.85; }
-  if (t !== "day" && ENV.weather !== "clear" && u) { u.top.value.multiplyScalar(0.6); u.bot.value.multiplyScalar(0.7); scene.background.multiplyScalar(0.7); scene.fog.color.multiplyScalar(0.7); }
+  if (t !== "day" && ENV.weather !== "clear" && u) { u.top.value.multiplyScalar(0.6); u.bot.value.multiplyScalar(0.7); if (scene.background.isColor) scene.background.multiplyScalar(0.7); scene.fog.color.multiplyScalar(0.7); }
   sun.color.setHex(sunCol); NIGHT_U.value = night; envDim(t === "night" ? 0.05 : t === "dusk" ? 0.3 : 0.55);
   if (window.__signMat) window.__signMat.emissiveIntensity = 0.12 + 1.2 * night;
   if (LAMP_GLOW.pools) { LAMP_GLOW.pools.visible = LAMP_GLOW.heads.visible = night > 0.3; LAMP_GLOW.pools.material.uniforms.uA.value = night; }
@@ -283,7 +285,7 @@ function timeEnv() {   // applyEnv 안에서 부름: 해·하늘·빛을 시간�
 { const d = document.createElement("div"); d.id = "wx";
   d.innerHTML = `<span>계절</span>${Object.entries(SEASON).map(([k, v]) => `<button data-s="${k}">${v.ko}</button>`).join("")}<i></i><span>날씨</span><button data-w="clear">맑음</button><button data-w="rain">비</button><button data-w="snow">눈</button><i></i><span>시간</span><button data-t="day">낮</button><button data-t="dusk">저녁</button><button data-t="night">밤</button>`;
   document.body.appendChild(d);
-  d.onclick = e => { const b = e.target.closest("button"); if (!b) return; if (b.dataset.s) { ENV.season = b.dataset.s; if (ENV.season !== "winter" && ENV.weather !== "snow") ENV.snow = 0; } if (b.dataset.w) { ENV.weather = b.dataset.w; ENV.overcast = false; } if (b.dataset.t) ENV.time = b.dataset.t; applyEnv(); };
+  d.onclick = e => { const b = e.target.closest("button"); if (!b) return; if (b.dataset.s) { ENV.season = b.dataset.s; if (!WX_OK[ENV.season].includes(ENV.weather)) ENV.weather = "clear"; if (ENV.season !== "winter" && ENV.weather !== "snow") ENV.snow = 0; } if (b.dataset.w) { ENV.weather = b.dataset.w; ENV.overcast = false; } if (b.dataset.t) ENV.time = b.dataset.t; applyEnv(); };
   const st = document.createElement("style"); st.textContent = "#wx{left:50%;top:58px;transform:translateX(-50%);display:flex;align-items:center;gap:6px;padding:7px 10px;font-size:13px}#wx span{color:var(--muted);margin:0 2px 0 4px}#wx i{width:1px;height:18px;background:var(--line);margin:0 4px}#wx button{font:inherit;font-size:12px;padding:5px 10px;border-radius:999px;border:1px solid var(--line);background:#1b1e23;color:var(--text);cursor:pointer}#wx button.on{background:var(--accent);border-color:var(--accent);color:#111}";
   document.head.appendChild(st); }
 const V = (x, y, z = 0) => new THREE.Vector3(x, z, -y);   // 지역좌표(x 동, y 북) → three(x, 위, -y)
@@ -632,7 +634,20 @@ if (!(city.street && city.street.xw)) { const Z = []; for (const w of MAJOR) { c
 
 // ══ 거리 디테일: 횡단보도·정지선·노면 글자·신호등·교통표지·방범 CCTV·볼라드 (props_layout.py 규칙 배치 = 어제 블렌더 판과 같음, 가정 배치) ══
 //   교통표지 그림은 도로교통법 시행규칙 별표 6 의 표지 모양을 단순화해 직접 그림(규제: 최고속도·서행·정지·주차금지·주정차금지·진입금지, 지시: 일방통행)
+if (city.street && city.official && city.official.xw) { const ST = city.street, O = city.official;
+  const nearWay = (x, y) => { let best = null; for (const w of city.ways) { const p = w.p; for (let i = 2; i < p.length; i += 2) { const ax = p[i - 2], ay = p[i - 1], dx = p[i] - ax, dy = p[i + 1] - ay, l2 = dx * dx + dy * dy || 1, t = Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / l2)), qx = ax + dx * t, qy = ay + dy * t, d = Math.hypot(x - qx, y - qy);
+      if (!best || d < best.d) best = { d, x: qx, y: qy, ang: Math.atan2(dy, dx), w: w.w }; } } return best; };
+  const oxw = []; for (const [x, y, lanes] of O.xw) { const n = nearWay(x, y); if (!n || n.d > 14 || n.w < 2.5) continue; if (oxw.some(q => Math.hypot(q[0] - n.x, q[1] - n.y) < 7)) continue; oxw.push([n.x, n.y, n.ang, Math.max(2 * n.w, 4), 3.0, 1]); }   // 실제 횡단보도(성동구 자료) → 가까운 길에 직각으로
+  ST.xw = ST.xw.filter(q => !oxw.some(o => Math.hypot(o[0] - q[0], o[1] - q[1]) < 18)).concat(oxw); ST.sl = ST.sl.filter(q => !oxw.some(o => Math.hypot(o[0] - q[0], o[1] - q[1]) < 18));
+  if (O.cam.length) ST.cc = O.cam.map(([x, y]) => { const n = nearWay(x, y); return [x, y, n ? Math.atan2(n.y - y, n.x - x) - Math.PI / 2 : 0]; });   // 실제 카메라 위치(방범 106·주정차 9·신호과속 6), 길 쪽을 봄
+  ST.kz = O.sg.map(([x, y]) => { const n = nearWay(x, y); return [x, y, n ? n.ang + Math.PI / 2 : 0]; }); }
 if (city.street && city.street.xw) { const ST = city.street, up = new THREE.Vector3(0, 1, 0);
+  if (ST.kz && ST.kz.length) {   // 어린이보호구역 안전표지판(성동구 자료 실제 위치 756곳): 노란 판 기둥 — 표지 종류는 자료에 없어 한 가지 모양
+    const cv = document.createElement("canvas"); cv.width = 128; cv.height = 160; const g = cv.getContext("2d"); g.fillStyle = "#f2c21a"; g.fillRect(0, 0, 128, 160); g.strokeStyle = "#111"; g.lineWidth = 6; g.strokeRect(5, 5, 118, 150);
+    g.fillStyle = "#111"; g.textAlign = "center"; g.font = '900 30px "Pretendard","Malgun Gothic",sans-serif'; g.fillText("어린이", 64, 58); g.fillText("보호", 64, 96); g.font = '900 36px "Pretendard",sans-serif'; g.fillText("30", 64, 140);
+    const tx = new THREE.CanvasTexture(cv); tx.colorSpace = THREE.SRGBColorSpace; const pole = new THREE.CylinderGeometry(0.03, 0.03, 2.5, 6); pole.translate(0, 1.25, 0); const plate = new THREE.BoxGeometry(0.45, 0.56, 0.02); plate.translate(0, 2.2, 0.04);
+    const ip = new THREE.InstancedMesh(pole, new THREE.MeshStandardMaterial({ color: 0x9a9da0, metalness: 0.5, roughness: 0.5 }), ST.kz.length), il = new THREE.InstancedMesh(plate, new THREE.MeshStandardMaterial({ map: tx, roughness: 0.5 }), ST.kz.length), mm = new THREE.Matrix4(), q = new THREE.Quaternion(), one = new THREE.Vector3(1, 1, 1);
+    ST.kz.forEach(([x, y, rot], j) => { q.setFromAxisAngle(up, rot); mm.compose(V(x, y, 0), q, one); ip.setMatrixAt(j, mm); il.setMatrixAt(j, mm); }); il.castShadow = true; scene.add(ip, il); }
   // 노면 칠: 흰색 한 덩어리(횡단보도 띠 0.45m · 정지선 0.35m)
   { const Wp = [], rect = (cx, cy, ang, len, wid, h = 0.1) => { const ux = Math.cos(ang), uy = Math.sin(ang), rx = -uy, ry = ux, c = [[-len / 2, -wid / 2], [len / 2, -wid / 2], [len / 2, wid / 2], [-len / 2, wid / 2]].map(([a, b]) => [cx + ux * a + rx * b, cy + uy * a + ry * b]);
       for (const k of [0, 1, 2, 0, 2, 3]) Wp.push(c[k][0], h, -c[k][1]); };
@@ -900,18 +915,39 @@ function drawBase() {
   for (const b of B) { if (b.gone) continue; bgc.fillStyle = b.tint ? b.tint : "#6b707a"; bgc.beginPath(); for (let i = 0; i < b.p.length; i += 2) { const [a, c] = mpx(b.p[i], b.p[i + 1]); i ? bgc.lineTo(a, c) : bgc.moveTo(a, c); } bgc.closePath(); bgc.fill(); }
 }
 drawBase();
+let mapR = 160, FAC_ON = true;
+const FAC_STYLE = { fire: ["#d93a2b", "119"], police: ["#1f4fa8", "경찰"], outdoor: ["#2e9e5b", "대피"], housing: ["#7a5bd1", "임시"], school: ["#e0a100", "스쿨존"] };
+const FAC_LIST = [...(city.facilities || []).map(f => ({ k: f.k, n: f.n, x: f.x, y: f.y })), ...(city.shelters || []).map(o => ({ k: o.k, n: o.n, x: o.x, y: o.y })), ...((city.official && city.official.sz) || []).filter((z, i, A) => !A.slice(0, i).some(q => Math.hypot(q[0] - z[0], q[1] - z[1]) < 8)).map(z => ({ k: "school", n: z[2] + " " + z[3] + " 어린이보호구역", x: z[0], y: z[1] }))];
+const FAC_TEX = {}; for (const [k, [c, t]] of Object.entries(FAC_STYLE)) { const cv = document.createElement("canvas"); cv.width = cv.height = 128; const g = cv.getContext("2d");
+  g.fillStyle = "#fff"; g.beginPath(); g.arc(64, 56, 54, 0, 7); g.fill(); g.fillStyle = c; g.beginPath(); g.arc(64, 56, 46, 0, 7); g.fill(); g.beginPath(); g.moveTo(48, 100); g.lineTo(80, 100); g.lineTo(64, 126); g.closePath(); g.fillStyle = "#fff"; g.fill();
+  g.fillStyle = "#fff"; g.font = `800 ${t.length > 2 ? 34 : 38}px "Pretendard","Malgun Gothic",sans-serif`; g.textAlign = "center"; g.textBaseline = "middle"; g.fillText(t, 64, 58); FAC_TEX[k] = new THREE.CanvasTexture(cv); FAC_TEX[k].colorSpace = THREE.SRGBColorSpace; }
+const FAC_SPR = FAC_LIST.map(f => { const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: FAC_TEX[f.k], depthTest: false, transparent: true })); sp.position.copy(V(f.x, f.y, 22)); sp.renderOrder = 9; sp.isLine = true; sp.userData.f = f; scene.add(sp); return sp; });   // 위에 떠 있는 표지(GTAO 에서 빠지게 선 표시)
 function drawMap(marks) {
-  const R = 160, cx = player.x, cy = player.y, k = mc.width / (2 * R);
+  const R = mapR, cx = player.x, cy = player.y, k = mc.width / (2 * R);
   mg.save(); mg.fillStyle = "#1b1e23"; mg.fillRect(0, 0, mc.width, mc.height);
   const [bx, by] = mpx(cx - R, cy + R); mg.drawImage(base, bx, by, 2 * R * MS, 2 * R * MS, 0, 0, mc.width, mc.height);
   const P = (x, y) => [(x - cx + R) * k, (cy + R - y) * k];
   mg.strokeStyle = "#ff8a1a"; mg.lineWidth = 4; for (const w of BARS) { const [a, b] = P(w[0], w[1]), [c, d] = P(w[2], w[3]); mg.beginPath(); mg.moveTo(a, b); mg.lineTo(c, d); mg.stroke(); }
   for (const m of marks) { const [a, b] = P(m[0], m[1]); mg.fillStyle = m[2]; mg.beginPath(); mg.arc(a, b, m[3] || 3.5, 0, 7); mg.fill(); }
+  if (FAC_ON) for (const f of FAC_LIST) { const [a, b] = P(f.x, f.y); if (a < -20 || b < -20 || a > mc.width + 20 || b > mc.height + 20) continue; const [c, t] = FAC_STYLE[f.k];   // 시설 아이콘
+    mg.fillStyle = "#fff"; mg.beginPath(); mg.arc(a, b, 15, 0, 7); mg.fill(); mg.fillStyle = c; mg.beginPath(); mg.arc(a, b, 12.5, 0, 7); mg.fill(); mg.fillStyle = "#fff"; mg.font = '800 10px "Pretendard",sans-serif'; mg.textAlign = "center"; mg.textBaseline = "middle"; mg.fillText(t, a, b + 0.5);
+    if (mapR < 260) { mg.font = '600 11px "Pretendard",sans-serif'; mg.fillStyle = "#e8eaed"; mg.fillText(f.n.length > 12 ? f.n.slice(0, 12) + "…" : f.n, a, b + 24); } }
   if (goal) { const [a, b] = P(goal.x, goal.y); mg.strokeStyle = "#3fb950"; mg.lineWidth = 4; mg.beginPath(); mg.arc(a, b, 11, 0, 7); mg.stroke(); }
   const [a, b] = P(cx, cy); mg.translate(a, b); mg.rotate(-yaw); mg.fillStyle = "#f2c230"; mg.beginPath(); mg.moveTo(0, -12); mg.lineTo(8, 8); mg.lineTo(-8, 8); mg.closePath(); mg.fill();
   mg.restore();
 }
 
+{ let md = null;   // 미니맵 조작
+  const toW = e => { const r = mc.getBoundingClientRect(), u = (e.clientX - r.left) / r.width, v = (e.clientY - r.top) / r.height; return { x: player.x + (u - 0.5) * 2 * mapR, y: player.y - (v - 0.5) * 2 * mapR }; };
+  mc.style.cursor = "grab"; mc.title = "끌기: 옮기기 · 휠: 넓게/좁게 · 누르기: 그곳으로(교통사고는 사고 지점)";
+  mc.addEventListener("pointerdown", e => { md = { x: e.clientX, y: e.clientY, moved: 0 }; mc.setPointerCapture(e.pointerId); mc.style.cursor = "grabbing"; e.stopPropagation(); });
+  mc.addEventListener("pointermove", e => { if (!md) return; const r = mc.getBoundingClientRect(), dx = e.movementX / r.width * 2 * mapR, dy = e.movementY / r.height * 2 * mapR; md.moved += Math.abs(e.movementX) + Math.abs(e.movementY);
+    player.x -= dx; player.y += dy; if (fly) { FLY.x -= dx; FLY.y += dy; } if (S) S.userPan = performance.now(); });
+  mc.addEventListener("pointerup", e => { mc.style.cursor = "grab"; if (md && md.moved < 6) { const w = toW(e);
+      if (S === SC.crash) { SC.crash.pickSpot(w.x, w.y); msg("사고 지점을 옮겼습니다(처음부터) · 「출발」", 2); }
+      else { player.x = w.x; player.y = w.y; if (fly) { FLY.x = w.x; FLY.y = w.y; } if (S) S.userPan = performance.now(); } }
+    md = null; });
+  mc.addEventListener("wheel", e => { e.preventDefault(); e.stopPropagation(); mapR = Math.max(60, Math.min(900, mapR * (e.deltaY > 0 ? 1.15 : 0.87))); }, { passive: false }); }
 // ── 조작 ──
 const keys = {}, pressed = {};
 addEventListener("keydown", e => { if (e.code === "Space") e.preventDefault(); if (!keys[e.code]) pressed[e.code] = true; keys[e.code] = true; if (e.code === "KeyM") showMenu(); if (e.code === "KeyN") sndToggle(); if (e.code === "KeyV") air = !air; if (e.code === "KeyG") toggleFly(); });
@@ -919,11 +955,15 @@ let fly = false; const FLY = { x: 0, y: 0, z: 0 };
 function toggleFly() { fly = !fly; if (fly) { FLY.fog = scene.fog.far; FLY.x = camera.position.x; FLY.y = -camera.position.z; FLY.z = Math.max(3, camera.position.y); const d = new THREE.Vector3(); camera.getWorldDirection(d); yaw = Math.atan2(-d.x, -d.z); pitch = Math.asin(Math.max(-1, Math.min(1, d.y))); }
   else { scene.fog.far = FLY.fog || 650; if (!(S && S.pano)) pitch = 0.32; } $("flyBtn").classList.toggle("on", fly); msg(fly ? "자유 비행 · WASD 이동, Space 위, C 아래, Shift 빠르게, 마우스 끌어 방향, G 끝" : "자유 비행 끝", 2); }
 addEventListener("keyup", e => keys[e.code] = false);
-let yaw = 0, pitch = 0.32, dist = 7, drag = false, air = false;
-canvas.addEventListener("pointerdown", e => { drag = true; canvas.setPointerCapture(e.pointerId); });
+let yaw = 0, pitch = 0.32, dist = 7, drag = false, air = false, airPt = 1.05, dragBtn = 0;
+canvas.addEventListener("pointerdown", e => { drag = true; dragBtn = e.button; canvas.setPointerCapture(e.pointerId); }); canvas.addEventListener("contextmenu", e => e.preventDefault());
 canvas.addEventListener("pointerup", () => drag = false);
-canvas.addEventListener("pointermove", e => { if (!drag) return; yaw -= e.movementX * 0.005; pitch = (S && S.pano) || fly ? Math.max(-1.45, Math.min(1.45, pitch - e.movementY * 0.004)) : Math.max(0.05, Math.min(1.35, pitch + e.movementY * 0.004)); });
-canvas.addEventListener("wheel", e => { e.preventDefault(); if (S && S.pano) { camera.fov = Math.max(25, Math.min(90, camera.fov * (e.deltaY > 0 ? 1.08 : 0.93))); camera.updateProjectionMatrix(); return; } dist = Math.max(3, Math.min(400, dist * (e.deltaY > 0 ? 1.12 : 0.89))); }, { passive: false });
+canvas.addEventListener("pointermove", e => { if (!drag) return;
+  if (air && !fly && !(S && S.pano)) { if (dragBtn === 0 && !e.shiftKey) { const k = Math.max(dist, 20) * 0.0016, fx = -Math.sin(yaw), fy = Math.cos(yaw);   // 끈 만큼 땅이 따라오게
+      player.x -= (e.movementX * fy - e.movementY * fx) * k; player.y -= (-e.movementX * fx - e.movementY * fy) * k; if (S) S.userPan = performance.now(); }
+    else { yaw -= e.movementX * 0.005; airPt = Math.max(0.35, Math.min(1.5, airPt + e.movementY * 0.004)); } return; }
+  yaw -= e.movementX * 0.005; pitch = (S && S.pano) || fly ? Math.max(-1.45, Math.min(1.45, pitch - e.movementY * 0.004)) : Math.max(0.05, Math.min(1.35, pitch + e.movementY * 0.004)); });
+canvas.addEventListener("wheel", e => { e.preventDefault(); if (S && S.pano) { camera.fov = Math.max(25, Math.min(90, camera.fov * (e.deltaY > 0 ? 1.08 : 0.93))); camera.updateProjectionMatrix(); return; } dist = Math.max(air ? 20 : 3, Math.min(air ? 1500 : 400, dist * (e.deltaY > 0 ? 1.12 : 0.89))); if (S) S.userPan = performance.now(); }, { passive: false });
 
 // ── 공통 상태 ──
 let player = { x: city.start[0], y: city.start[1], hp: 100, sp: 1 }, pa = null, goal = null, running = false, T = 0, S = null, scnDef = null;
@@ -953,7 +993,7 @@ function clearAll() {
   if (pa) scene.remove(pa.root); SMOKE.clear(); FIREP.clear(); DUST.clear(); RAIN.clear(); WATER.visible = false; BOOM.intensity = 0;
   for (const c of CARS) scene.remove(c.g); CARS = []; DRIVE = null;
   for (const p of PICKS) scene.remove(p.g); PICKS = []; for (const r of ROCKETS) scene.remove(r.g); ROCKETS = []; INV = {}; CUR = 0; held = null; $("weap").style.display = "none";
-  $("panoBox").style.display = "none"; ctrl(""); envDim(0.55); if (typeof SMOKE2 !== "undefined") { SMOKE2.clear(); FLAME.clear(); DUST2.clear(); } camera.fov = 55; camera.updateProjectionMatrix();
+  $("panoBox").style.display = "none"; if (SC.pano360 && SC.pano360.noReal) SC.pano360.noReal(); ctrl(""); envDim(0.55); if (typeof SMOKE2 !== "undefined") { SMOKE2.clear(); FLAME.clear(); DUST2.clear(); } camera.fov = 55; camera.updateProjectionMatrix();
   setMood(0xb9c7d3, 650, 0.15, 3.4); canvas.style.filter = ""; $("yrBox").style.display = "none"; resetCity(); drawBase(); shake = 0;
 }
 // 길 따라 걷기: mode = walk(아무 데나) | goto(goal 쪽으로) | flee(from 반대쪽)
@@ -1834,23 +1874,33 @@ SC.pano360 = { pano: true, hp: false, tools: "마우스로 끌어 둘러보기 �
     this.spots = [["연무장길", { x: city.start[0], y: city.start[1], z: 1.7 }], ["대림창고", near(DAELIM)], ["성수역", near(ex)], ["하우스 노웨어", near(HAUS)],
       ["코오롱디지털타워", near(KOLON)], ["연무장길 옥상 전망", { x: city.start[0] + 10, y: city.start[1] + 25, z: 34 }], ["하늘에서", { x: city.start[0], y: city.start[1] - 120, z: 160 }]].filter(s => s[1]);
     $("panoBox").innerHTML = ""; this.spots.forEach(([n], i) => { const b = document.createElement("button"); b.textContent = n; b.onclick = () => this.go(i); $("panoBox").appendChild(b); });
+    const sep = document.createElement("span"); sep.className = "sep"; sep.textContent = "실사 사진"; $("panoBox").appendChild(sep);
+    for (const [t, f] of [["◀", () => this.real((this.ri ?? 0) - 1)], ["로드뷰", () => this.real(this.ri ?? 0)], ["▶", () => this.real((this.ri ?? -1) + 1)], ["항공뷰", () => this.real(this.list ? this.list.findIndex(p => p.kind === "air") : 0)]]) { const b = document.createElement("button"); b.textContent = t; b.onclick = f; b.dataset.real = 1; $("panoBox").appendChild(b); }
+    fetch("pano/index.json").then(r => r.json()).then(j => { this.list = j; }).catch(() => {});
     $("panoBox").style.display = "flex"; for (let i = 0; i < 90; i++) spawnWalker({ rmax: 220 }); if (pa) pa.root.visible = false; this.go(0); },
-  go(i) { this.i = i; const p = this.spots[i][1]; player.x = p.x; player.y = p.y; this.z = p.z; pitch = p.z > 100 ? -0.6 : 0; camera.fov = 70; camera.updateProjectionMatrix();
+  real(i) {   // 성동구 「성수카페거리 로드뷰·항공뷰」(공공데이터포털, 이용 제한 없음) 360° 사진을 배경으로, 3D 는 숨김. 촬영 위치 정보는 자료에 없음
+    if (!this.list) { msg("사진 목록을 불러오는 중", 1); return; } const n = this.list.length; i = ((i % n) + n) % n; this.ri = i; const it = this.list[i], d = `pano/${it.id}/`;
+    new THREE.CubeTextureLoader().load(["r", "l", "u", "d", "f", "b"].map(f => d + f + ".jpg"), tex => { tex.colorSpace = THREE.SRGBColorSpace; if (!this.prevBg) this.prevBg = scene.background; if (this.cube) this.cube.dispose(); this.cube = tex; scene.background = tex; camera.layers.set(31); });
+    const road = this.list.filter(p => p.kind === "road"), k = it.kind === "road" ? road.indexOf(it) + 1 : this.list.filter(p => p.kind === "air").indexOf(it) + 1;
+    this.realName = it.kind === "road" ? `성수카페거리 로드뷰 ${k}/${road.length}` : `성수카페거리 항공뷰 ${k}/${n - road.length}`; pitch = it.kind === "air" ? -0.35 : 0; camera.fov = 75; camera.updateProjectionMatrix();
+    [...$("panoBox").children].forEach(b => b.classList.toggle("on", !!b.dataset.real && b.textContent === (it.kind === "air" ? "항공뷰" : "로드뷰"))); msg(this.realName + " · 실제 사진(촬영 위치 정보 없음)", 2); },
+  noReal() { if (this.prevBg) { scene.background = this.prevBg; this.prevBg = null; } camera.layers.set(0); this.realName = null; },
+  go(i) { this.noReal(); this.i = i; const p = this.spots[i][1]; player.x = p.x; player.y = p.y; this.z = p.z; pitch = p.z > 100 ? -0.6 : 0; camera.fov = 70; camera.updateProjectionMatrix();
     [...$("panoBox").children].forEach((b, k) => b.classList.toggle("on", k === i)); msg(this.spots[i][0], 1.2); },
   update(dt) { for (const w of NPC) { stepWalker(w, dt, w.sp); collide(w, 0.35); showActor(w, true, dt, 1); }
-    setRows([["지점", this.spots[this.i][0]]]); $("goal").textContent = "360 보기 · " + this.spots[this.i][0]; },
+    const nm = this.realName || this.spots[this.i][0]; setRows([["지점", nm]].concat(this.realName ? [["출처", "성동구 「성수카페거리 로드뷰·항공뷰」(공공데이터포털, 이용 제한 없음)"], ["촬영 위치", "자료에 없음"]] : [])); $("goal").textContent = "360 보기 · " + nm; },
   marks() { return []; } };
 const VIEWS2 = [["free", "일반 보기", "걷거나 G 자유 비행으로 성수동 둘러보기"], ["pano360", "360 보기", "대림창고·성수역 등 지점에 서서 둘러보기"]].map(([id, name, d]) => ({ id, name, d }));
 // ── 9. 교통사고: 차–보행자 충돌(물리 엔진 cannon-es) + 정지거리 + 긴급 출동 ──
 // 정지거리 = 반응 거리(v·t) + 제동 거리(v²/2μg). 마찰계수 μ: 마른 노면 0.7 · 젖은 노면 0.45 · 눈 0.2(교통공학에서 흔히 쓰는 값, 가정)
 // 충돌 뒤 더미(관절 11개 래그돌, 75kg)는 물리 엔진이 계산: 범퍼·보닛에 걸려 넘어가고 튕겨 나가 땅에 끌리다 멈춤
 // 보행자 사망 위험: Rosén & Sander(2009) 충돌 속도 로지스틱 곡선 P = 1/(1+e^(6.9−0.090·v)) (원문 대조 전, 참고용)
-// 출동 기지: OpenStreetMap 에 이름이 있는 소방서·지구대·파출소(치안센터 제외) 중 길로 가장 가까운 곳. 실제 관할·출동 체계와 다를 수 있음
-const EM_BASES = [
-  { kind: "fire", name: "성동소방서", x: -1234, y: 1196, osm: "way/874583385" },
-  { kind: "fire", name: "광진소방서", x: 2578, y: 203, osm: "way/706564386" },
-  { kind: "police", name: "화양동파출소", x: 1582, y: 407, osm: "node/4637752877" },
-  { kind: "police", name: "한양지구대", x: -1043, y: 1910, osm: "node/368601593" } ];
+// 출동 기지: 소방 = 서울시 「소방서 안전센터 구조대 위치정보」 2025 좌표(성수·송정·행당 119안전센터 등), 경찰 = OpenStreetMap 지구대·파출소. 길로 가장 가까운 곳(실제 관할과 다를 수 있음)
+const EM_BASES = (() => { const F = city.facilities || [], L = [];   // 소방: 서울 열린데이터광장 소방서·119안전센터 좌표(2025) · 경찰: OSM 지구대·파출소
+  for (const f of F) if (f.k === "fire" && /119안전센터|소방서/.test(f.n)) L.push({ kind: "fire", name: f.n, x: f.x, y: f.y });
+  for (const f of F) if (f.k === "police" && /지구대|파출소/.test(f.n)) L.push({ kind: "police", name: f.n, x: f.x, y: f.y });
+  if (!L.some(b => b.kind === "police")) L.push({ kind: "police", name: "화양동파출소", x: 1582, y: 407 });
+  return L; })();
 const EM_V = 30 / 3.6, EM_CALL = 60, EM_PREP = 60, EM_ROAD = 1.3, EM_X = 8;   // 출동 평균 30km/h · 신고 접수 1분 · 출동 준비 1분 · 지도 밖 길 = 직선×1.3 (모두 가정) · 출동 장면 8배속
 let CANNON = null;
 function dijkstraCar(targets, minW = 4) {   // 차가 다닐 수 있는 길(폭 4m 이상)만
@@ -1863,16 +1913,30 @@ function dijkstraCar(targets, minW = 4) {   // 차가 다닐 수 있는 길(폭 
 function vehicleGroup(type) {   // 불러온 차 모델을 한 대짜리 그룹으로
   const parts = window.__carModels && (window.__carModels[type] || window.__carModels.sedan); const g = new THREE.Group(); if (!parts) return g;
   for (const p of parts) { const m = new THREE.Mesh(p.geo, p.mat); m.castShadow = true; m.receiveShadow = true; g.add(m); } return g; }
-function sirenLights(g, cols) {   // 지붕 경광등(빨강·파랑 번갈아) + 둘레를 비추는 빛
-  const bb = new THREE.Box3().setFromObject(g), top = bb.max.y, L = [];
-  cols.forEach((c, i) => { const m = new THREE.Mesh(new THREE.BoxGeometry(0.66, 0.22, 0.34), new THREE.MeshBasicMaterial({ color: new THREE.Color(c).multiplyScalar(8), toneMapped: false })); m.position.set(i ? 0.38 : -0.38, top + 0.11, 0.2); g.add(m);   // 톤매핑을 넘는 밝기 → 밤 빛번짐(bloom)이 잡음
-    const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: SIREN_HALO, color: c, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false })); halo.scale.set(5, 5, 1); halo.position.set(i ? 0.38 : -0.38, top + 0.2, 0.2); halo.renderOrder = 5; halo.isLine = true;   /* GTAO 법선 그리기에서 빠지게(안 그러면 검은 네모) */ g.add(halo); m.userData.halo = halo;
+function roofAt(g, z0, z1) {   // 차 모델에서 앞뒤 z0~z1 구간의 가장 높은 곳(지붕) — 경광등을 실제 지붕 위에 얹으려고
+  let top = 0, xs = 0, n = 0; g.traverse(o => { if (!o.isMesh || !o.geometry.attributes.position) return; const P = o.geometry.attributes.position;
+    for (let k = 0; k < P.count; k += 3) { const z = P.getZ(k); if (z < z0 || z > z1) continue; const y = P.getY(k); if (y > top) top = y; } }); return top; }
+function sirenLights(g, cols, type) {   // 지붕 경광등(빨강·파랑 번갈아) + 작은 빛무리 + 길바닥 빛 — 승용(경찰)은 지붕 가운데, 소방·구급·화물은 앞 운전석 지붕
+  const bb = new THREE.Box3(); g.traverse(o => { if (o.isMesh) { o.geometry.computeBoundingBox(); bb.union(o.geometry.boundingBox); } });
+  const Lz = bb.max.z - bb.min.z, cab = type === "fire" || type === "ambulance" || type === "parcel", zc = cab ? bb.max.z - Lz * 0.16 : (bb.min.z + bb.max.z) / 2 - Lz * 0.05;
+  const top = roofAt(g, zc - Lz * 0.07, zc + Lz * 0.07) || bb.max.y, L = [];
+  cols.forEach((c, i) => { const m = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.16, 0.26), new THREE.MeshBasicMaterial({ color: new THREE.Color(c).multiplyScalar(8), toneMapped: false })); m.position.set(i ? 0.3 : -0.3, top + 0.08, zc); g.add(m);
+    const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: SIREN_HALO, color: c, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false })); halo.scale.set(1.6, 1.6, 1); halo.position.set(i ? 0.3 : -0.3, top + 0.12, zc); halo.renderOrder = 5; halo.isLine = true;   /* GTAO 에서 빠지게 */ g.add(halo); m.userData.halo = halo;
     m.userData.top = top; L.push(m); });
-  const pool = new THREE.Mesh(new THREE.PlaneGeometry(16, 16).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ map: SIREN_HALO, color: cols[0], transparent: true, opacity: 0.5, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }));   // 길바닥에 번지는 빛
-  pool.position.y = 0.15; pool.renderOrder = 4; pool.isLine = true; g.add(pool); L.pool = pool; L.cols = cols; return L; }
+  const pool = new THREE.Mesh(new THREE.PlaneGeometry(12, 12).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ map: SIREN_HALO, color: cols[0], transparent: true, opacity: 0.5, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }));   // 길바닥에 번지는 빛
+  pool.position.set(0, 0.15, zc); pool.renderOrder = 4; pool.isLine = true; g.add(pool); L.pool = pool; L.cols = cols; return L; }
 const SIREN_HALO = (() => { const c = document.createElement("canvas"); c.width = c.height = 128; const g = c.getContext("2d"), gr = g.createRadialGradient(64, 64, 0, 64, 64, 64);
   gr.addColorStop(0, "rgba(255,255,255,1)"); gr.addColorStop(0.18, "rgba(255,255,255,.75)"); gr.addColorStop(0.5, "rgba(255,255,255,.18)"); gr.addColorStop(1, "rgba(255,255,255,0)"); g.fillStyle = gr; g.fillRect(0, 0, 128, 128); return new THREE.CanvasTexture(c); })();
 const EM_PL = [new THREE.PointLight(0xff2a2a, 0, 30, 1.5), new THREE.PointLight(0x2a6bff, 0, 30, 1.5)]; for (const l of EM_PL) scene.add(l);   // 경광등 빛 2개(처음부터 있어 재질 다시 컴파일 없음): 카메라에 가장 가까운 출동 차에 붙임
+const HAT = { police: [0x1f3f7a, "경찰", "#fff"], fire: [0xe8b61a, "119", "#b3130c"], ambulance: [0xf4f4f0, "구급", "#d93a2b"] };
+function roleHat(a, kind) {   // 머리 위 모자에 역할 글자(실제 기관 휘장이 아니라 글자 표시)
+  const H = HAT[kind]; if (!H || !a.body) return; const bone = a.body.getObjectByName("head_end") || a.body.getObjectByName("Head"); if (!bone) return;
+  const cv = document.createElement("canvas"); cv.width = 384; cv.height = 64; const g = cv.getContext("2d"); g.fillStyle = "#" + H[0].toString(16).padStart(6, "0"); g.fillRect(0, 0, 384, 64); g.fillStyle = H[2]; g.font = '900 44px "Pretendard","Malgun Gothic",sans-serif'; g.textAlign = "center"; g.textBaseline = "middle"; for (let i = 0; i < 3; i++) g.fillText(H[1], 64 + i * 128, 34);
+  const tx = new THREE.CanvasTexture(cv); tx.colorSpace = THREE.SRGBColorSpace; const side = new THREE.MeshStandardMaterial({ map: tx, roughness: 0.6 }), top = new THREE.MeshStandardMaterial({ color: H[0], roughness: 0.6 });
+  const hat = new THREE.Mesh(new THREE.CylinderGeometry(0.125, 0.135, 0.12, 20), [side, top, top]), grp = new THREE.Group(); grp.add(hat); bone.add(grp);
+  a.body.updateWorldMatrix(true, true); const ws = new THREE.Vector3(), wq = new THREE.Quaternion(); bone.getWorldScale(ws); bone.getWorldQuaternion(wq); grp.scale.setScalar(1 / (ws.x || 1)); grp.quaternion.copy(wq.invert()); hat.position.y = -0.02; }
+const RAG_BONE = [["pelvis", "Hips", "Spine02", 1], ["torso", "Spine02", "neck", 1], ["head", "Head", "head_end", 1], ["thighL", "UpLeg", "Leg", -1], ["thighR", "UpLeg", "Leg", -1], ["shinL", "Leg", "Foot", -1], ["shinR", "Leg", "Foot", -1],
+  ["uarmL", "Arm", "ForeArm", -1], ["uarmR", "Arm", "ForeArm", -1], ["larmL", "ForeArm", "Hand", -1], ["larmR", "ForeArm", "Hand", -1]];
 const RAG = [   // 이름, 모양(상자 반폭 / 공 반지름), 서 있을 때 중심(오른쪽 x, 위 y), 질량 kg
   ["pelvis", [0.17, 0.1, 0.1], [0, 0.93], 12], ["torso", [0.19, 0.25, 0.11], [0, 1.27], 25], ["head", 0.11, [0, 1.66], 5],
   ["thighL", [0.07, 0.22, 0.07], [-0.1, 0.66], 8], ["thighR", [0.07, 0.22, 0.07], [0.1, 0.66], 8], ["shinL", [0.06, 0.23, 0.06], [-0.1, 0.21], 4], ["shinR", [0.06, 0.23, 0.06], [0.1, 0.21], 4],
@@ -1892,7 +1956,7 @@ SC.crash = { hp: false, air: true, dist0: 55, tools: "큰길을 눌러 사고 �
       서울 2024년 법규위반별(33,465건): 안전운전 의무불이행 58% · 안전거리 미확보 16% · 신호위반 10% · 교차로 통행방법 위반 3% · 중앙선 침범 2% · 기타 11%. 서울 사망자 212명 중 보행자 117명(56%).
       출처: 도로교통공단 교통사고분석시스템(TAAS) — 서울 열린데이터광장 「교통사고 현황(사고유형별)」, 서울시 교통 누리집 교통사고통계. 무단횡단처럼 보행자 잘못이 큰 사고는 이 운전자 법규위반 통계에 따로 나뉘지 않습니다.</div>
       <div class="note">정지거리 = 반응 거리 + 제동 거리(v²/2μg), 노면 마찰은 날씨를 따름(마름 0.7 · 비 0.45 · 눈 0.2, <b>가정</b>). 충돌 뒤 더미(관절 11개, 75kg)의 움직임은 물리 엔진 cannon-es 계산입니다.
-      사망 위험은 Rosén & Sander(2009) 곡선(원문 대조 전). 출동은 OpenStreetMap 의 소방서·지구대·파출소에서 길을 따라 평균 30km/h, 신고·출동 준비 2분으로 본 <b>가정</b>입니다.</div>`);
+      사망 위험은 Rosén & Sander(2009) 곡선(원문 대조 전). 출동 기지: 소방 = 서울시 소방서·119안전센터 좌표(2025, 서울 열린데이터광장 OA-21072), 경찰 = OpenStreetMap 지구대·파출소. 길을 따라 평균 30km/h, 신고·출동 준비 2분은 <b>가정</b>입니다.</div>`);
     $("k_m").onchange = e => { this.mode = e.target.value; this.gapSet = false; this.reset(); this.causeMark(); }; $("k_v").onchange = e => { this.kmh = +e.target.value; this.reset(); };
     $("k_t").onchange = e => { this.tr = +e.target.value; this.reset(); }; $("k_g").oninput = e => { this.gapSet = true; this.gap = +e.target.value; $("k_gv").textContent = this.gap + " m"; this.reset(); };
     $("k_go").onclick = () => this.go(); $("k_rs").onclick = () => this.reset(); $("k_hr").onchange = () => this.reset();
@@ -1939,7 +2003,7 @@ SC.crash = { hp: false, air: true, dist0: 55, tools: "큰길을 눌러 사고 �
     const car = new CN.Body({ mass: 1500, material: mC, allowSleep: false, linearFactor: new CN.Vec3(1, 0, 1), angularFactor: new CN.Vec3(0, 0, 0) }); car.collisionFilterGroup = 1; car.collisionFilterMask = 2 | 4;   /* 1.5t, 높이·자세 고정, 속도는 매 장면 지정 */
     car.addShape(new CN.Box(new CN.Vec3(wc / 2, 0.36, Lc / 2)), new CN.Vec3(0, 0.5, 0)); car.addShape(new CN.Box(new CN.Vec3(wc * 0.44, 0.3, Lc * 0.25)), new CN.Vec3(0, 1.16, -Lc * 0.08)); W.addBody(car); this.car = car; car.addEventListener("collide", e => { if (this.state === "run" && e.body && (e.body.collisionFilterGroup === 2 || e.body.collisionFilterGroup === 4)) this.hitNow = true; });   /* 계산 도중엔 바꾸지 않고 한 걸음 뒤에 */
     const cg = vehicleGroup(type); scene.add(cg); this.objs.push(cg); extra.push(cg); this.carG = cg;
-    this.v = this.kmh / 3.6; this.pv = this.mode === "dart" ? 3.0 : 1.34; if (!this.gapSet) { this.gap = this.mode === "follow" ? Math.max(3, Math.round(this.v * this.tr * 0.45)) : Math.max(8, Math.min(60, Math.round(this.v * (this.curb - this.lane) / this.pv))); if ($("k_g")) { $("k_g").value = this.gap; $("k_gv").textContent = this.gap + " m"; } } this.carD = -(this.gap + Math.min(this.v * 2.5, 30)) - Lc / 2; this.brakeAt = Infinity; this.t = 0; this.state = "ready"; this.hitNow = false; this.res = null; this.risk = null; this.dvLead = null; this.em = []; this.haz = null; this.drv = null; this.flee = null; this.fleeAt = null; this.hr = !!($("k_hr") && $("k_hr").checked) && this.mode !== "follow"; this.hitT = null; this.vImp = null; this.slow = 0; this.restT = 0;
+    this.v = this.kmh / 3.6; this.pv = this.mode === "dart" ? 3.0 : 1.34; if (!this.gapSet) { this.gap = this.mode === "follow" ? Math.max(3, Math.round(this.v * this.tr * 0.45)) : Math.max(8, Math.min(60, Math.round(this.v * (this.curb - this.lane) / this.pv))); if ($("k_g")) { $("k_g").value = this.gap; $("k_gv").textContent = this.gap + " m"; } } this.carD = -(this.gap + Math.min(this.v * 2.5, 30)) - Lc / 2; this.brakeAt = Infinity; this.t = 0; this.state = "ready"; this.hitNow = false; this.res = null; this.risk = null; this.dvLead = null; this.em = []; this.haz = null; this.drv = null; this.vict = null; this.vmap = null; this.flee = null; this.fleeAt = null; this.loadedAt = null; this.departAt = null; this.hr = !!($("k_hr") && $("k_hr").checked) && this.mode !== "follow"; this.hitT = null; this.vImp = null; this.slow = 0; this.restT = 0;
     this.rag = null; this.ragM = []; this.lead = null; this.hit2 = false; this.dvLead = null;
     if (this.mode === "follow") {   // 안전거리 미확보: 앞차(1.6t SUV)가 급정거, 뒤차는 반응 시간 뒤 제동 — 두 차 모두 물리 몸체
       const Ll = CAR_TYPES.suv, lead = new CN.Body({ mass: 1600, material: mC, allowSleep: false, linearFactor: new CN.Vec3(1, 0, 1), angularFactor: new CN.Vec3(0, 0, 0) }); lead.collisionFilterGroup = 4; lead.collisionFilterMask = 1;
@@ -1972,7 +2036,7 @@ SC.crash = { hp: false, air: true, dist0: 55, tools: "큰길을 눌러 사고 �
       scene.add(mesh); this.objs.push(mesh); extra.push(mesh); this.ragM.push([mesh, b]); }
     for (const [a, bn, j, ang] of RAG_J) { const A = this.rag[a], Bd = this.rag[bn], ca = RAG.find(r => r[0] === a)[2], cb = RAG.find(r => r[0] === bn)[2];
       W.addConstraint(new CN.ConeTwistConstraint(A, Bd, { pivotA: new CN.Vec3(j[0] - ca[0], j[1] - ca[1], 0), pivotB: new CN.Vec3(j[0] - cb[0], j[1] - cb[1], 0), axisA: CN.Vec3.UNIT_Y, axisB: CN.Vec3.UNIT_Y, angle: ang, twistAngle: 0.4 })); }
-    this.pose(0); this.placeCar(true);
+    this.pose(0); this.placeCar(true); this.bindDummy();
     if (this.ch) this.ch.reset(); else this.ch = new LiveChart([{ label: "차 속도", color: "#4fa3ff", unit: " km/h" }, { label: "더미 속도", color: "#ff7a1a", unit: " km/h", fill: false }], { h: 150, max: 400, xt: "초" });
     this.stopD = this.v * this.tr + this.v * this.v / (2 * this.mu() * 9.81); this.info(); },
   local(lx, ly, lz) {   // 사람 기준 좌표(오른쪽, 위, 앞) → 세계 좌표(three)
@@ -1994,20 +2058,20 @@ SC.crash = { hp: false, air: true, dist0: 55, tools: "큰길을 눌러 사고 �
         { const vis = this.em.filter(u => u.g.visible).sort((a, b) => camera.position.distanceTo(a.g.position) - camera.position.distanceTo(b.g.position))[0], ph = Math.floor(performance.now() / 160) % 2;
           EM_PL.forEach((l, i) => { if (!vis) { l.intensity = 0; return; } l.position.copy(vis.g.position).add(new THREE.Vector3(i ? 0.8 : -0.8, 3.2, 0)); l.intensity = (i === ph || vis.type === "fire") ? 90 + 160 * Math.min(1, NIGHT_U.value * 1.8) : 0; l.distance = 30 + 25 * Math.min(1, NIGHT_U.value * 1.8); if (vis.type === "fire") l.color.setHex(0xff2a2a); else l.color.setHex(i ? 0x2a6bff : 0xff2a2a); }); }
         const et = this.t - this.hitT; YIELD.length = 0; YIELD.push({ x: this.road.x, y: this.road.y, r: 35 });   // 사고 현장 둘레 일반 차 멈춤
-        for (const u of this.em) { this.driveEm(u, et, sdt);
+        for (const u of this.em) { this.driveEm(u, et, sdt); if (u.done && !u.chase) this.crewTick(u, et, sdt);
           if (u.g.visible) { const ph = Math.floor(performance.now() / 160) % 2, nt = Math.min(1, NIGHT_U.value * 1.8);   // 저녁(약 0.45)부터 거의 밤만큼   // 밤일수록 후광·바닥 빛 진하게
-            u.lights.forEach((l, i) => { const on = u.lights.length === 1 || (i % 2) === ph; l.visible = on; l.userData.halo.visible = on; l.userData.halo.material.opacity = 0.45 + 0.55 * nt; l.userData.halo.scale.setScalar(4 + 4 * nt); });
+            u.lights.forEach((l, i) => { const on = u.lights.length === 1 || (i % 2) === ph; l.visible = on; l.userData.halo.visible = on; l.userData.halo.material.opacity = 0.45 + 0.55 * nt; l.userData.halo.scale.setScalar(1.6 + 1.4 * nt); });
             const pc = u.lights.cols[ph % u.lights.cols.length]; u.lights.pool.material.color.setHex(pc); u.lights.pool.material.opacity = 0.18 + 0.5 * nt;
             if (!u.done) YIELD.push({ x: u.g.position.x, y: -u.g.position.z, r: 26 });   // 사이렌 울리는 차 앞뒤 일반 차가 멈춰 길을 비킴
-            if (!u.snd && !u.sirenEnd) this.sirenOn(u); if (u.done && u.sirenEnd == null) u.sirenEnd = et + 4; this.sirenTick(u, !(u.sirenEnd != null && et > u.sirenEnd)); } }  },
+            if (!u.snd && !u.sirenEnd) this.sirenOn(u); if (u.done && u.sirenEnd == null && u.st !== "leave") u.sirenEnd = et + 4; this.sirenTick(u, u.st === "leave" || !(u.sirenEnd != null && et > u.sirenEnd)); } }  },
   afterCrash(sdt) {   // 사고 낸 차는 그 자리에 서서 비상등, 멈추면 운전자가 내려 다친 사람(추돌이면 앞차)에게 감
     const list = this.mode === "follow" ? [this.carG, this.leadG] : [this.carG];
     if (!this.haz) { this.haz = []; const mat = new THREE.MeshBasicMaterial({ color: new THREE.Color(0xffa020).multiplyScalar(5), toneMapped: false });
       for (const g of list) { const bb = new THREE.Box3(); for (const c of g.children) if (c.geometry) { c.geometry.computeBoundingBox(); bb.union(c.geometry.boundingBox); }
-        for (const sx of [-1, 1]) for (const sz of [-1, 1]) { const m = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.1, 0.08), mat); m.position.set(sx * (bb.max.x - 0.18), (bb.min.y + bb.max.y) * 0.45, sz > 0 ? bb.max.z - 0.02 : bb.min.z + 0.02); g.add(m); this.haz.push(m); } } }
+        for (const sx of [-1, 1]) for (const sz of [-1, 1]) { const m = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.08, 0.06), mat); m.position.set(sx * (bb.max.x - 0.32), bb.min.y + (sz > 0 ? 0.68 : 0.82), sz > 0 ? bb.max.z - 0.04 : bb.min.z + 0.04); g.add(m); this.haz.push(m); } } }
     const on = !this.hr && Math.floor(performance.now() / 420) % 2 === 0; for (const m of this.haz) m.visible = on;   /* 뺑소니는 비상등도 안 켬 */
     if (!this.drv && this.v < 0.1 && !this.hr) { const cp = this.car.position, L = { x: -this.F.y, y: this.F.x }, a = makeActor(MAN, 0xffffff, 0xdddddd);
-      this.drv = { x: cp.x + L.x * 1.3, y: -cp.z + L.y * 1.3, a, head: 0, sp: 1.6 }; this.objs.push(a.root); }
+      a.mk.scale.setScalar(0); this.drv = { x: cp.x + L.x * 1.3, y: -cp.z + L.y * 1.3, a, head: 0, sp: 1.6 }; this.objs.push(a.root); }
     if (this.drv) { const tg = this.rag ? { x: this.rag.pelvis.position.x, y: -this.rag.pelvis.position.z } : { x: this.lead.position.x + (-this.F.y) * 1.4, y: -this.lead.position.z + this.F.x * 1.4 };
       const d = Math.hypot(tg.x - this.drv.x, tg.y - this.drv.y), mv = d > 1.3; if (mv) moveTo(this.drv, tg.x, tg.y, this.drv.sp, sdt, 0.3); showActor(this.drv, mv, sdt, 1.2); } },
   roadNode(x, y) { let b = -1, bd = 1e9; for (let i = 0; i < NODES.length; i++) { if (NODES[i].w < 2.5 || !NADJ[i].some(k => NODES[k].w >= 2.5)) continue;   /* 차길끼리 이어진 마디만 */ const d = (NODES[i].x - x) ** 2 + (NODES[i].y - y) ** 2; if (d < bd) { bd = d; b = i; } } return b; },
@@ -2027,7 +2091,7 @@ SC.crash = { hp: false, air: true, dist0: 55, tools: "큰길을 눌러 사고 �
     const Dc = dijkstraCar([this.roadNode(this.road.x, this.road.y)], 2.5), pc = []; for (let i = 0; i < NODES.length; i++) if (isFinite(Dc[i]) && Dc[i] > 350 && Dc[i] < 600 && NODES[i].w >= 2.5) pc.push(i);
     if (!pc.length) for (let i = 0; i < NODES.length; i++) if (isFinite(Dc[i]) && Dc[i] > 150 && NODES[i].w >= 2.5) pc.push(i);
     if (pc.length) { const n = NODES[pick(pc)], g = vehicleGroup("police"); g.visible = false; scene.add(g); this.objs.push(g); extra.push(g);
-      this.em.push({ type: "police", label: "순찰차(인근 순찰 중)", base: "추적", g, lights: sirenLights(g, [0xff2a2a, 0x2a6bff]), chase: true, x: n.x, y: n.y, enter: EM_CALL, dep: EM_CALL, arr: EM_CALL, s: 0, R: null, rt: 0, done: false, km: 0, stopAt: 16 }); } },
+      this.em.push({ type: "police", label: "순찰차(인근 순찰 중)", base: "추적", g, lights: sirenLights(g, [0xff2a2a, 0x2a6bff], "police"), chase: true, x: n.x, y: n.y, enter: EM_CALL, dep: EM_CALL, arr: EM_CALL, s: 0, R: null, rt: 0, done: false, km: 0, stopAt: 16 }); } },
   fleeTick(sdt) { const F = this.flee; if (!F || !F.on) return; F.s = Math.min(F.cum[F.cum.length - 1], F.s + F.v * sdt); const p = this.along(F, F.s, 2.0);
     this.carG.position.set(p.x, 0, -p.y); this.carG.rotation.set(0, p.h, 0); F.x = p.x; F.y = p.y;
     for (const [i, c] of (city.street ? city.street.cc : []).entries()) if (!F.cctv.includes(i) && Math.hypot(c[0] - p.x, c[1] - p.y) < 22) { F.cctv.push(i);   // 방범 CCTV 포착 표시
@@ -2041,6 +2105,41 @@ SC.crash = { hp: false, air: true, dist0: 55, tools: "큰길을 눌러 사고 �
     const d = Math.hypot(tg.x - p.x, tg.y - p.y);
     if (F && F.on && d < 10) { F.on = false; F.caught = true; F.at = et; u.done = true; u.at = et; msg(`도주 차량 검거 · 사고 후 ${Math.floor(et / 60)}분 ${Math.round(et % 60)}초 · CCTV ${F.cctv.length}곳 포착`, 5); }
     else if (!(F && F.on) && d < u.stopAt) { u.done = true; u.at = et; } },
+  zoneRow() { const Z = (city.official && city.official.sz) || []; if (!Z.length || !this.road) return []; let b = null; for (const z of Z) { const d = Math.hypot(z[0] - this.road.x, z[1] - this.road.y); if (!b || d < b.d) b = { d, n: z[2] + " " + z[3] }; }
+    return [["어린이보호구역", b.d <= 300 ? `${b.n} ${Math.round(b.d)}m — 구역 안(제한 30km/h)${this.kmh > 30 ? " · 지금 속도는 위반" : ""}` : `가장 가까운 곳 ${b.n} ${Math.round(b.d)}m(구역 밖)`]]; },   // 보호구역 = 시설 주 출입문 반경 300m 안 도로 중 지정(도로교통법 제12조) — 여기선 시설 좌표에서 300m 로 단순화
+  bindDummy() {   // 평소 보행자와 같은 더미 모델의 뼈대를 물리 몸체 11개에 맞춰 움직임(상자 인형 대신)
+    this.vict = null; if (!DUMMY_GLB) return; const a = makeActor(MAN, 0xffffff, 0xdddddd); this.objs.push(a.root); this.vict = a; a.mk.scale.setScalar(0);
+    a.root.position.set(this.rag.pelvis.position.x, 0, this.rag.pelvis.position.z); a.root.rotation.y = Math.atan2(-this.G.x, this.G.y) + Math.PI;
+    a.body.traverse(o => { if (o.isSkinnedMesh) { o.skeleton.pose(); o.frustumCulled = false; } }); a.root.updateWorldMatrix(true, true);
+    const q0 = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, this.pyaw, 0)), map = [], wp = o => o.getWorldPosition(new THREE.Vector3());
+    for (const [rb, bn, cn, sgn] of RAG_BONE) { const side = /L$/.test(rb) ? ["Left", "Right"] : /R$/.test(rb) ? ["Right", "Left"] : [""];
+      let bone = null; if (side[0]) { const c = side.map(sd => a.body.getObjectByName(sd + bn)).filter(Boolean), bp = new THREE.Vector3(this.rag[rb].position.x, this.rag[rb].position.y, this.rag[rb].position.z); bone = c.sort((u, v) => wp(u).distanceTo(bp) - wp(v).distanceTo(bp))[0]; }   // 왼·오른쪽은 실제로 가까운 쪽 뼈
+      else bone = a.body.getObjectByName(bn); if (!bone) continue; const child = bone.children.find(c => c.isBone && c.name.includes(cn)) || bone.children.find(c => c.isBone); if (!child) continue;
+      const d0 = wp(child).sub(wp(bone)).normalize(), al = new THREE.Quaternion().setFromUnitVectors(d0, new THREE.Vector3(0, sgn, 0)), bw = bone.getWorldQuaternion(new THREE.Quaternion());
+      map.push({ body: this.rag[rb], bone, off: q0.clone().invert().multiply(al.multiply(bw)) }); }
+    this.vmap = map; for (const [m] of this.ragM) m.visible = false; this.syncDummy(); },
+  syncDummy() { if (!this.vict || !this.vmap) return; const pq = new THREE.Quaternion(), bq = new THREE.Quaternion();
+    for (const { body, bone, off } of this.vmap) { bone.parent.updateWorldMatrix(true, false); if (bone.name === "Hips") { bone.position.copy(bone.parent.worldToLocal(new THREE.Vector3(body.position.x, body.position.y, body.position.z))); }
+      bone.parent.getWorldQuaternion(pq); bq.set(body.quaternion.x, body.quaternion.y, body.quaternion.z, body.quaternion.w); bone.quaternion.copy(pq.invert().multiply(bq.multiply(off))); bone.updateMatrix(); } },
+  victimPos() { return this.rag ? { x: this.rag.pelvis.position.x, y: -this.rag.pelvis.position.z } : this.lead ? { x: this.lead.position.x - this.F.y * 1.4, y: -this.lead.position.z + this.F.x * 1.4 } : { x: this.road.x, y: this.road.y }; },
+  crewTick(u, et, sdt) {
+    const back = { x: u.g.position.x - Math.sin(u.g.rotation.y) * -3.2, y: -u.g.position.z + Math.cos(u.g.rotation.y) * -3.2 };   // 차 뒤쪽
+    if (!u.crew) { const tint = u.type === "ambulance" ? 0xf08a2a : u.type === "police" ? 0x2f4f8f : 0xd9b23a, n = u.type === "police" ? 1 : 2;
+      u.crew = []; for (let i = 0; i < n; i++) { const a = makeActor(MAN, tint, 0xdddddd), c = { x: back.x + (i ? 0.7 : -0.7), y: back.y, a, head: 0, sp: 1.5 }; roleHat(a, u.type); a.mk.scale.setScalar(0); u.crew.push(c); this.objs.push(a.root); }
+      u.st = u.type === "ambulance" ? "go" : "guard"; u.stT = 0;
+      if (u.type === "ambulance") { const st = new THREE.Group(), bed = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.1, 1.9), new THREE.MeshStandardMaterial({ color: 0xe8e8e2, roughness: 0.6 })), fr = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.05, 1.95), new THREE.MeshStandardMaterial({ color: 0x9ea3a8, metalness: 0.6 }));
+        bed.position.y = 0.85; fr.position.y = 0.78; st.add(bed, fr); const pat = new THREE.Mesh(new THREE.CapsuleGeometry(0.2, 1.3, 4, 8), new THREE.MeshStandardMaterial({ color: DUMMY_C[0], roughness: 0.55 })); pat.rotation.x = Math.PI / 2; pat.position.y = 1.08; pat.visible = false; st.add(pat);
+        st.userData.pat = pat; scene.add(st); this.objs.push(st); extra.push(st); u.bed = st; } }
+    u.stT += sdt; const v = this.victimPos();
+    if (u.type !== "ambulance") { const g = { x: this.road.x + (u.type === "police" ? 6 : -6) * this.F.x, y: this.road.y + (u.type === "police" ? 6 : -6) * this.F.y };   // 현장 앞뒤에서 통제
+      u.crew.forEach((c, i) => { const tx = g.x + (i ? 1.2 : 0) * this.G.x, ty = g.y + (i ? 1.2 : 0) * this.G.y, mv = Math.hypot(tx - c.x, ty - c.y) > 0.6; if (mv) moveTo(c, tx, ty, c.sp, sdt, 0.3); else c.head = Math.atan2(-(this.road.x - c.x), this.road.y - c.y); showActor(c, mv, sdt, 1); }); return; }
+    const [m1, m2] = u.crew, mid = { x: (m1.x + m2.x) / 2, y: (m1.y + m2.y) / 2 };
+    const walkTo = (tx, ty) => { let mv = false; [m1, m2].forEach((c, i) => { const ox = (i ? 0.95 : -0.95) * Math.cos(u.g.rotation.y), oy = (i ? 0.95 : -0.95) * Math.sin(u.g.rotation.y); const d = Math.hypot(tx + ox - c.x, ty + oy - c.y); if (d > 0.4) { moveTo(c, tx + ox, ty + oy, c.sp, sdt, 0.3); mv = true; } showActor(c, d > 0.4, sdt, 1); }); return mv; };
+    if (u.st === "go") { if (!walkTo(v.x, v.y)) { u.st = "treat"; u.stT = 0; msg("구급대원 도착 · 응급처치", 1.5); } }
+    else if (u.st === "treat") { walkTo(v.x, v.y); if (u.stT > 20) { u.st = "load"; u.stT = 0; for (const [m] of this.ragM) m.visible = false; if (this.vict) this.vict.root.visible = false; u.bed.userData.pat.visible = true; this.loadedAt = et; } }   // 응급처치 20초(가정)
+    else if (u.st === "load") { if (!walkTo(back.x, back.y)) { u.st = "leave"; u.stT = 0; u.crew.forEach(c => c.a.root.visible = false); u.bed.visible = false; msg("환자를 싣고 병원으로 출발", 2); u.leave = { s: u.cum[u.cum.length - 1] - u.stopAt }; this.departAt = et; } }
+    else if (u.st === "leave") { u.leave.s = Math.max(0, u.leave.s - EM_V * 1.2 * sdt); const k = this.along({ pts: u.pts, cum: u.cum }, u.leave.s, 2.0); u.g.position.set(k.x, 0, -k.y); u.g.rotation.set(0, k.h + Math.PI, 0); u.sirenEnd = null; if (u.leave.s <= 0) { u.g.visible = false; u.st = "gone"; } }   // 왔던 길로 되돌아 나감
+    if (u.bed && u.bed.visible) { u.bed.position.set(mid.x, 0, -mid.y); u.bed.rotation.y = u.g.rotation.y; } },
   placeLead() { const lp = this.lead.position; this.leadG.position.set(lp.x, 0, lp.z); this.leadG.rotation.set(0, Math.atan2(this.F.x, -this.F.y), 0); this.leadDNow = (lp.x - this.C.x) * this.F.x + (-lp.z - this.C.y) * this.F.y; },
   go() { if (!this.world) return; if (this.state !== "ready") this.reset(); this.state = "run"; },
   impact() { if (this.mode === "follow") { this.state = "hit"; this.hit2 = true; this.hitT = this.t; this.vImp = this.v - this.vL; this.vLead0 = this.vL; this.slow = 3; shake = Math.min(1.2, this.vImp / 12);
@@ -2060,7 +2159,7 @@ SC.crash = { hp: false, air: true, dist0: 55, tools: "큰길을 눌러 사고 �
     const units = [["ambulance", "fire", "구급차", [0xff2a2a, 0x2a6bff], 8], ["police", "police", "순찰차", [0xff2a2a, 0x2a6bff], 16], ["fire", "fire", "소방차(펌프)", [0xff2a2a, 0xff2a2a], 25]];
     for (const [type, kind, label, cols, stopAt] of units) { const p = plan(kind); if (!p) continue;
       const path = [p.e]; while (D[path[path.length - 1]] > 0.5 && path.length < 2000) { const i = path[path.length - 1]; let nx = -1, nd = D[i]; for (const k of NADJ[i]) if (D[k] < nd) { nd = D[k]; nx = k; } if (nx < 0) break; path.push(nx); }
-      const g = vehicleGroup(type); g.visible = false; scene.add(g); this.objs.push(g); extra.push(g); const lights = sirenLights(g, cols);
+      const g = vehicleGroup(type); g.visible = false; scene.add(g); this.objs.push(g); extra.push(g); const lights = sirenLights(g, cols, type);
       const dep = EM_CALL + EM_PREP, arr = dep + p.tot / EM_V;
       const pts = path.map(i => ({ x: NODES[i].x, y: NODES[i].y })).concat([{ x: this.road.x, y: this.road.y }]), cum = [0]; for (let i = 1; i < pts.length; i++) cum.push(cum[i - 1] + Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y));
       this.em.push({ type, label, base: p.bs.name, g, lights, pts, cum, s: 0, dep, enter: dep + p.out / EM_V, arr, stopAt, done: false, km: p.tot / 1000 }); } },
@@ -2105,15 +2204,17 @@ SC.crash = { hp: false, air: true, dist0: 55, tools: "큰길을 눌러 사고 �
         if (!this.res && this.restT > 1.2) { const p = this.rag.pelvis.position; this.res = { thrown: Math.hypot(p.x - this.hitP.x, -p.z - this.hitP.y) }; }
         this.emTick(sdt); }
       if (this.t - (this.lastC || -1) > 0.05 && (this.state === "run" || this.t - this.hitT < 12)) { this.lastC = this.t; this.ch.push(this.t.toFixed(1), [this.v * 3.6, this.rag.pelvis.velocity.length() * 3.6]); } }
-    for (const [m, b] of this.ragM) { m.position.copy(b.position); m.quaternion.copy(b.quaternion); }
-    if (this.state === "hit" && this.flee && this.flee.on) { const pc = this.em.find(u => u.chase && u.g.visible), tx = pc ? (pc.x + this.flee.x) / 2 : this.flee.x, ty = pc ? (pc.y + this.flee.y) / 2 : this.flee.y; player.x += (tx - player.x) * 0.08; player.y += (ty - player.y) * 0.08; }
+    for (const [m, b] of this.ragM) { m.position.copy(b.position); m.quaternion.copy(b.quaternion); } this.syncDummy();
+    if (performance.now() - (this.userPan || 0) < 3000) {}   /* 사용자가 지도를 옮기는 중이면 화면을 빼앗지 않음 */
+    else if (this.state === "hit" && this.flee && this.flee.on) { const pc = this.em.find(u => u.chase && u.g.visible), tx = pc ? (pc.x + this.flee.x) / 2 : this.flee.x, ty = pc ? (pc.y + this.flee.y) / 2 : this.flee.y; player.x += (tx - player.x) * 0.08; player.y += (ty - player.y) * 0.08; }
     else if (this.state === "hit" && this.rag) { const lead = (this.t - this.hitT > 4) && this.em.find(u => u.g.visible && !u.done), p = this.rag.pelvis.position, tx = lead ? lead.g.position.x : p.x, ty = lead ? -lead.g.position.z : -p.z;   // 들어오는 출동 차를 따라 보다가 도착하면 현장으로
       player.x += (tx - player.x) * 0.06; player.y += (ty - player.y) * 0.06; }
     this.info(); },
   info() { const f = s => s == null ? "-" : `${Math.floor(s / 60)}분 ${String(Math.round(s % 60)).padStart(2, "0")}초`, et = this.hitT == null ? null : this.t - this.hitT;
     const rows = this.mode === "follow" ? [["추돌 속도 차", this.vImp == null ? (this.state === "stop" ? "충돌 없음" : "-") : (this.vImp * 3.6).toFixed(0) + " km/h"], ["앞차 속도 변화(Δv)", this.dvLead == null ? "-" : "+" + (this.dvLead * 3.6).toFixed(0) + " km/h"],
       ["필요한 간격(반응 거리)", (this.kmh / 3.6 * this.tr).toFixed(1) + " m"], ["실제 간격", this.gap + " m"], ["노면 마찰", this.mu() + (ENV.weather === "clear" ? " 마름" : ENV.weather === "rain" ? " 젖음" : " 눈")]] : [["충돌 속도", this.vImp == null ? (this.state === "stop" ? "충돌 없음" : "-") : (this.vImp * 3.6).toFixed(0) + " km/h"], ["사망 위험(참고)", this.risk == null ? "-" : Math.round(this.risk * 100) + "%"],
-      ["정지거리(계산)", this.stopD.toFixed(1) + " m"], ["노면 마찰", this.mu() + (ENV.weather === "clear" ? " 마름" : ENV.weather === "rain" ? " 젖음" : " 눈")], ["더미가 밀려난 거리", this.res ? this.res.thrown.toFixed(1) + " m" : "-"]];
+      ["정지거리(계산)", this.stopD.toFixed(1) + " m"], ...this.zoneRow(), ["노면 마찰", this.mu() + (ENV.weather === "clear" ? " 마름" : ENV.weather === "rain" ? " 젖음" : " 눈")], ["더미가 밀려난 거리", this.res ? this.res.thrown.toFixed(1) + " m" : "-"]];
+    if (this.loadedAt != null) rows.push(["환자", this.departAt != null ? `병원 이송 출발(사고 후 ${f(this.departAt)})` : "들것으로 구급차에 싣는 중"]);
     if (this.flee) rows.push(["도주 차량", this.flee.caught ? `검거(사고 후 ${f(this.flee.at)}) · CCTV ${this.flee.cctv.length}곳 포착` : this.flee.gone ? `지도 밖 도주 · CCTV ${this.flee.cctv.length}곳 기록` : `도주 중 · CCTV ${this.flee.cctv.length}곳 포착`]);
     for (const u of this.em || []) { const st = u.chase ? (u.done ? (this.flee && this.flee.caught ? `${f(u.at)} 검거` : `${f(u.at)} 현장 도착`) : et == null || et < u.enter ? "신고 접수 대기" : "사이렌 · 추적 중") : u.done ? `${f(u.at)} 도착` : et == null ? "-" : et < EM_CALL ? "신고 접수 중" : et < u.dep ? "출동 준비" : et < u.enter ? `지도 밖 이동 · ${f(u.arr)} 도착 예상` : `사이렌 · 접근 중(${f(u.arr)} 예상)`; rows.push([`${u.label} · ${u.base}`, st]); }
     setRows(rows);
@@ -2141,6 +2242,8 @@ let PAUSED = false, SPK = 1;
   $("out").appendChild($("map")); $("out").appendChild($("tools"));
   for (const id of ["flyBtn", "sndBtn"]) { const b = $(id); b.className = "ico"; b.removeAttribute("style"); $("time").appendChild(b); }
   $("flyBtn").textContent = "✈ 자유 비행"; $("flyBtn").title = "G: 자유 비행 (WASD 이동, Space 위, C 아래)";
+  { const fb = document.createElement("button"); fb.className = "ico on"; fb.id = "facBtn"; fb.textContent = "시설 표시"; fb.title = "119안전센터·경찰·대피장소 표지 켜고 끄기";
+    fb.onclick = () => { FAC_ON = !FAC_ON; fb.classList.toggle("on", FAC_ON); }; $("time").insertBefore(fb, $("flyBtn")); }
   { const a = document.createElement("button"); a.className = "ico"; a.id = "airBtn"; a.textContent = "항공 보기"; a.title = "V: 항공 보기와 거리 보기 바꾸기"; a.onclick = () => { air = !air; if (air) dist = Math.max(dist, 120); a.classList.toggle("on", air); }; $("time").insertBefore(a, $("flyBtn")); }
   $("time").insertBefore($("goal"), $("spd")); $("goal").className = "";
   $("play").onclick = () => { PAUSED = !PAUSED; $("play").textContent = PAUSED ? "▶" : "❚❚"; $("play").setAttribute("aria-label", PAUSED ? "재생" : "일시정지"); };
@@ -2194,7 +2297,8 @@ function frame(fixed) {
     const moving = !!(fw || st), sp = (run ? 6.0 : 2.4) * player.sp;
     if (DRIVE) driveUpdate(dt);
     if (moving) { SFX.step(run); if (S === SC.flood && SC.flood.lv > 0.3) SFX.water();
-      const ang = yaw + Math.atan2(-st, fw); player.x += -Math.sin(ang) * sp * dt; player.y += Math.cos(ang) * sp * dt; collide(player, 0.45); player.head = ang; }
+      const ang = yaw + Math.atan2(-st, fw), spd = air ? Math.max(dist, 20) * (run ? 2.4 : 0.9) : sp; player.x += -Math.sin(ang) * spd * dt; player.y += Math.cos(ang) * spd * dt; if (!air) collide(player, 0.45); player.head = ang; }   /* 항공 보기: 나는 물리·충돌에서 빠짐(건물 위로도 지나감), 높이에 맞춰 빨리 */
+    pa.root.visible = !air;
     pa.root.position.copy(V(player.x, player.y, 0)); pa.root.rotation.y = (player.head ?? yaw) + Math.PI; pa.act.paused = !moving; pa.mixer.update(dt * (run ? 1.9 : 1) * player.sp);
     if (held && pa.hand) {   // 무기를 오른손 위치에 붙임(방향은 몸 앞쪽, 로켓은 어깨 위)
       pa.root.updateMatrixWorld(true); const hp_ = new THREE.Vector3(); pa.hand.getWorldPosition(hp_); pa.root.worldToLocal(hp_);
@@ -2212,7 +2316,7 @@ function frame(fixed) {
   SMOKE.update(dt, 0.15); FIREP.update(dt, 0.5); DUST.update(dt, 0.4); RAIN.update(dt);
   BOOM.intensity *= Math.pow(0.02, dt); shake = Math.max(0, shake - dt * 0.6);
   if (msgT > 0) { msgT -= dt; if (msgT <= 0) $("msg").style.display = "none"; }
-  const tgt = V(player.x, player.y, 1.5), pt = air ? 1.05 : pitch, ds = air ? Math.max(dist, 150) : dist;
+  const tgt = V(player.x, player.y, 1.5), pt = air ? airPt : pitch, ds = air ? Math.max(dist, 20) : dist;
   if (fly) {   // 자유 비행: 카메라 앞뒤좌우(땅과 나란히)·위아래, 건물 지붕 아래로는 안 내려감
     const sp = (keys.ShiftLeft || keys.ShiftRight ? 90 : 25) * dt, fx = -Math.sin(yaw), fy = Math.cos(yaw);
     const f = (keys.KeyW ? 1 : 0) - (keys.KeyS ? 1 : 0), r = (keys.KeyD ? 1 : 0) - (keys.KeyA ? 1 : 0), u = (keys.Space ? 1 : 0) - (keys.KeyC ? 1 : 0);
@@ -2234,7 +2338,7 @@ function frame(fixed) {
     if (sc.right !== ext) { sc.left = -ext; sc.right = ext; sc.top = ext; sc.bottom = -ext; sc.far = wide ? 1600 : 500; sc.updateProjectionMatrix(); sun.shadow.mapSize.set(wide ? 4096 : 2048, wide ? 4096 : 2048); if (sun.shadow.map) { sun.shadow.map.dispose(); sun.shadow.map = null; } }
     const fc = fly ? new THREE.Vector3(camera.position.x, 0, camera.position.z) : tgt, sp = S && S.sp && S === SC.sun ? S.sp : null;
     if (sp) sun.position.set(fc.x + Math.sin(sp.az) * Math.cos(sp.alt) * 600, Math.max(5, Math.sin(sp.alt) * 600), fc.z - Math.cos(sp.az) * Math.cos(sp.alt) * 600); else if (SUN_DIR) sun.position.set(fc.x + SUN_DIR.x * 600, SUN_DIR.y * 600, fc.z + SUN_DIR.z * 600); else sun.position.set(fc.x - 120 * (wide ? 3 : 1), 160 * (wide ? 3 : 1), fc.z + 80 * (wide ? 3 : 1));
-    sun.target.position.copy(fc); shT += dt || 0.016; if (shT > 0.25 || shP.distanceToSquared(sun.position) > 1) { renderer.shadowMap.needsUpdate = true; shT = 0; shP.copy(sun.position); } } MK_ME.visible = air && !(S && S.air); { const k = air || fly ? Math.min(4.5, Math.max(1, (air ? dist : camera.position.y) / 45)) : 1; PS.set(k, k, k); }
+    sun.target.position.copy(fc); shT += dt || 0.016; if (shT > 0.25 || shP.distanceToSquared(sun.position) > 1) { renderer.shadowMap.needsUpdate = true; shT = 0; shP.copy(sun.position); } } MK_ME.visible = air && !(S && S.air); { const cpos = camera.position; for (const sp of FAC_SPR) { sp.visible = FAC_ON && (air || fly) && !(S && S.pano); const d = cpos.distanceTo(sp.position); sp.scale.setScalar(Math.max(6, d * 0.045)); sp.position.y = air ? Math.max(22, d * 0.04) : 22; } } { const k = air || fly ? Math.min(4.5, Math.max(1, (air ? dist : camera.position.y) / 45)) : 1; PS.set(k, k, k); }
     if (running && air && !fly && !(S && S.pano)) { const h = Math.max(0, camera.position.y), cl = ENV.weather === "clear";   /* 항공 보기: 안개를 카메라 높이만큼 뒤로 밀어 저녁·비·눈에도 동네가 보이게(날씨 느낌은 먼 곳에만) */
       scene.fog.near = Math.max(FOGB.near, h * (cl ? 1.6 : 1.0)); scene.fog.far = Math.max(FOGB.far, h * (cl ? 10 : 4.5) + 300); }
     else if (running && !fly && !(S && S.pano)) { scene.fog.near = FOGB.near; scene.fog.far = FOGB.far; }

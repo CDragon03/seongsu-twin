@@ -163,7 +163,38 @@ if os.path.exists(_SJ):
     _S = [o for o in json.load(open(_SJ, encoding="utf-8")) if o.get("how") == "이름"]; _c = _co.Counter((round(o["x"]), round(o["y"])) for o in _S)
     SHEL = [{"k": o["kind"], "n": o["name"], "t": o["type"], "a": o["area"], "c": o["cap"], "x": o["x"], "y": o["y"]} for o in _S if _c[(round(o["x"]), round(o["y"]))] == 1]
     print("대피장소", len(SHEL))
-out = {"stations": stations, "trees": TREES, "street": STREET, "shelters": SHEL, "exits2": exits2, "buildings": B, "roads": R, "alleys": [r2(v) for t_ in AL for v in t_], "ways": W_,
+# 소방: 서울 열린데이터광장 「소방서 안전센터 구조대 위치정보」 2025(OA-21072, 공공누리 1유형) 좌표 EPSG:5186 → 지역좌표(data/emergency/fire_near.json)
+# 경찰: 위치 공공자료가 없어 OpenStreetMap(amenity=police, 이름 있는 것)
+FAC = []
+_FJ = os.path.join(D, "data", "emergency", "fire_near.json")
+if os.path.exists(_FJ):
+    for o in json.load(open(_FJ, encoding="utf-8")):
+        if o["name"] == "구조대": continue
+        FAC.append({"k": "fire", "n": o["name"], "t": o["type"], "x": o["x"], "y": o["y"]})
+_PJ2 = os.path.join(D, "data", "emergency_osm.json")
+if os.path.exists(_PJ2):
+    for e in json.load(open(_PJ2, encoding="utf-8"))["elements"]:
+        t = e.get("tags", {})
+        if t.get("amenity") != "police" or not t.get("name"): continue
+        la = e.get("lat") or e["center"]["lat"]; lo = e.get("lon") or e["center"]["lon"]; x, y = xy(la, lo)
+        if abs(x) < 4500 and abs(y) < 4500 and not any(f["k"] == "police" and f["n"] == t["name"] and math.hypot(f["x"] - x, f["y"] - y) < 50 for f in FAC):
+            FAC.append({"k": "police", "n": t["name"], "t": "OSM", "x": r2(x), "y": r2(y)})
+print("시설", len(FAC))
+# 성동구 어린이보호구역 주변 교통안전시설(공공데이터포털 파일, 2022-12-15 기준): 보호구역 52곳·안전표지판·횡단보도·교통단속카메라 실제 좌표
+import csv as _csv
+_TD = os.path.join(D, "data", "sd_traffic"); OFF = {}
+def _rows(fn):
+    f = os.path.join(_TD, fn); return list(_csv.DictReader(open(f, encoding="utf-8"))) if os.path.exists(f) else []
+_inb = lambda x, y: _X0 - 60 < x < _X1 + 60 and _Y0 - 60 < y < _Y1 + 60
+def _ll(r, la, lo):   # 좌표 빈 줄은 건너뜀
+    try: return [xy(float(r[la]), float(r[lo]))]
+    except (ValueError, KeyError, TypeError): return []
+OFF["sz"] = [[r2(x), r2(y), r["시설명"], r["시설종류"]] for r in _rows("schoolzone_u.csv") for x, y in _ll(r, "위도", "경도") if _inb(x, y)]
+OFF["sg"] = [[r2(x), r2(y)] for r in _rows("signs_u.csv") for x, y in _ll(r, "Y좌표(위도)", "X좌표(경도)") if _inb(x, y)]
+OFF["xw"] = [[r2(x), r2(y), int(float(r.get("차로수") or 2)), 1 if r.get("보행자신호등 유무") == "Y" else 0] for r in _rows("crosswalk_u.csv") for x, y in _ll(r, "Y좌표(위도)", "X좌표(경도)") if _inb(x, y)]
+OFF["cam"] = [[r2(x), r2(y), r.get("용도", "")] for r in _rows("camera_u.csv") for x, y in _ll(r, "Y좌표(위도)", "X좌표(경도)") if _inb(x, y)]
+print("공식 교통안전시설", {k: len(v) for k, v in OFF.items()})
+out = {"stations": stations, "trees": TREES, "street": STREET, "shelters": SHEL, "facilities": FAC, "official": OFF, "exits2": exits2, "buildings": B, "roads": R, "alleys": [r2(v) for t_ in AL for v in t_], "ways": W_,
        "ground": {"img": "ground.jpg", "corners": GR["corners"]}, "exits": EX, "viaduct": V,
        "start": [r2(CX), r2(CY)], "source": "건물: 국토교통부 GIS건물통합정보(빠진 147동은 OpenStreetMap 윤곽·높이 추정) · 도로: OpenStreetMap · 바닥: 국토지리정보원 정사영상 2025 · 가로수: 서울시 가로수 위치정보 2026"}
 json.dump(out, open(os.path.join(G, "city.json"), "w", encoding="utf-8"), ensure_ascii=False, separators=(",", ":"))
