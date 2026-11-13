@@ -149,7 +149,14 @@ SPK = {"이팝나무": "ip", "양버즘나무": "pl", "느티나무": "ze", "메
 _TJ = os.path.join(D, "data", "street_trees", "area.json")
 TREES = [[r2(t["x"]), r2(t["y"]), SPK.get(t["s"], "ot")] for t in json.load(open(_TJ, encoding="utf-8"))] if os.path.exists(_TJ) else []
 print("가로수", len(TREES))
-out = {"stations": stations, "trees": TREES, "exits2": exits2, "buildings": B, "roads": R, "alleys": [r2(v) for t_ in AL for v in t_], "ways": W_,
+# 거리 소품(어제 블렌더 판과 같은 배치, props_layout.py 규칙으로 OSM 길에서 만든 가정 배치): 횡단보도·정지선·노면 글자·신호등·교통표지·방범 CCTV·볼라드
+_PJ = os.path.join(D, "data", "props.json"); STREET = {}
+if os.path.exists(_PJ):
+    _P = json.load(open(_PJ, encoding="utf-8")); rr = lambda a: [round(v, 2) if isinstance(v, float) else v for v in a]
+    for k, n in (("xwalks", "xw"), ("stoplines", "sl"), ("tlights", "tl"), ("rsigns", "rs"), ("cctvs", "cc"), ("bollards", "bo"), ("ymj_bollards", "yb")): STREET[n] = [rr(r) for r in _P.get(k, [])]
+    STREET["rt"] = [rr(r) for r in _P.get("roadtext", []) + _P.get("ymj_text", [])]
+    print("거리 소품", {k: len(v) for k, v in STREET.items()})
+out = {"stations": stations, "trees": TREES, "street": STREET, "exits2": exits2, "buildings": B, "roads": R, "alleys": [r2(v) for t_ in AL for v in t_], "ways": W_,
        "ground": {"img": "ground.jpg", "corners": GR["corners"]}, "exits": EX, "viaduct": V,
        "start": [r2(CX), r2(CY)], "source": "건물: 국토교통부 GIS건물통합정보(빠진 147동은 OpenStreetMap 윤곽·높이 추정) · 도로: OpenStreetMap · 바닥: 국토지리정보원 정사영상 2025 · 가로수: 서울시 가로수 위치정보 2026"}
 json.dump(out, open(os.path.join(G, "city.json"), "w", encoding="utf-8"), ensure_ascii=False, separators=(",", ":"))
