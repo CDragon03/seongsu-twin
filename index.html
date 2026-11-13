@@ -536,7 +536,8 @@ function updateTraffic(dt) {   // 차끼리·사람과 부딪히지 않게: 같�
     const vDes = gap < 0.4 ? 0 : Math.min(o.v, Math.sqrt(2 * 5 * Math.max(0, gap - 0.4)));   // 5 m/s² 로 멈출 수 있는 속도
     o.cv = vDes < o.cv ? Math.max(vDes, o.cv - 8 * dt) : Math.min(vDes, o.cv + 2.5 * dt);
     o.pull = Math.max(0, Math.min(1, o.pull + (yieldStop ? 0.8 : -0.5) * dt)); }
-  cars.forEach((o, i) => { o.s += o.cv * dt * o.dir; if (o.s > o.T - 4) { o.s = o.T - 4; o.dir = -1; } if (o.s < 4) { o.s = 4; o.dir = 1; }
+  cars.forEach((o, i) => { if (o.crashed) { T_.m.makeScale(0, 0, 0); if (T_.glb) { const sl = T_.glb.moving[i]; for (const im of T_.glb.ims[sl.type]) im.setMatrixAt(sl.i, T_.m); } return; }   /* 사고 낸 차는 사고 화면의 차가 맡음 */
+    o.s += o.cv * dt * o.dir; if (o.s > o.T - 4) { o.s = o.T - 4; o.dir = -1; } if (o.s < 4) { o.s = 4; o.dir = 1; }
     const off = Math.min(o.lane + o.pull * 1.3, Math.max(o.lane, o.w.w - 1.0)), p = wayAt(o.w.p, o.L, o.s, o.dir > 0 ? off : -off);
     { const a = wayAt(o.w.p, o.L, Math.max(0, o.s - 0.5), 0), b = wayAt(o.w.p, o.L, Math.min(o.T, o.s + 0.5), 0), l = Math.hypot(b.x - a.x, b.y - a.y) || 1; o.fx = (b.x - a.x) / l * o.dir; o.fy = (b.y - a.y) / l * o.dir; }
     o.px = p.x; o.py = p.y;
@@ -1789,7 +1790,7 @@ SC.evac = Object.assign(Object.create(SC.crowd), { tools: "땅을 누르면 대�
   marks() { const o = this.OS.map(s => [s.x, s.y, "#f2c230", 6]); for (let i = 0; i < this.A.length; i += 3) { const a = this.A[i]; o.push([a.x, a.y, hex6(rhoCol(a.rho)), a.rho >= 4 ? 3 : 1.6]); } return o; } });
 
 SC.free = { hp: false, tools: "자유롭게 걷기 · V 항공 보기 · G 자유 비행 · 2호선이 고가 위를 다닙니다",
-  init() { for (let i = 0; i < 110; i++) spawnWalker({ rmax: 220 }); msg("일반 보기 · 성수동을 자유롭게 돌아보세요", 2.5); },
+  init() { for (const o of TRAFFIC.cars) o.crashed = false; for (let i = 0; i < 110; i++) spawnWalker({ rmax: 220 }); msg("일반 보기 · 성수동을 자유롭게 돌아보세요", 2.5); },
   update(dt) { const px = player.x, py = player.y;
     for (const w of NPC) { stepWalker(w, dt, w.sp);
       const dx = w.x - px, dy = w.y - py, d = Math.hypot(dx, dy);   // 나를 뚫고 지나가지 않게: 1.2m 안이면 옆으로 비켜 감
@@ -1798,7 +1799,7 @@ SC.free = { hp: false, tools: "자유롭게 걷기 · V 항공 보기 · G 자�
     // 차에 치임: 다니는 차가 내 자리를 지나면(차는 피하지 않음) 교통사고 화면으로 — 물리 계산·긴급 출동
     if (!fly && !air && !this.hitLock) for (const o of TRAFFIC.cars) { const c = wayAt(o.w.p, o.L, o.s, o.dir > 0 ? o.lane : -o.lane), a = wayAt(o.w.p, o.L, Math.max(0, o.s - 1), 0), b = wayAt(o.w.p, o.L, Math.min(o.T, o.s + 1), 0);
       const L = Math.hypot(b.x - a.x, b.y - a.y) || 1, fx = (b.x - a.x) / L * o.dir, fy = (b.y - a.y) / L * o.dir, ex = px - c.x, ey = py - c.y, along = ex * fx + ey * fy, lat = -ex * fy + ey * fx;
-      if ((o.cv ?? o.v) > 2 && along > 1.2 && along < 2.9 && Math.abs(lat) < 1.15) { this.hitLock = true; const kmh = (o.cv ?? o.v) * 3.6, sc = SCN.find(q => q.id === "crash");
+      if ((o.cv ?? o.v) > 2 && along > 1.2 && along < 2.9 && Math.abs(lat) < 1.15) { this.hitLock = true; o.crashed = true; const kmh = (o.cv ?? o.v) * 3.6, sc = SCN.find(q => q.id === "crash");
         msg(`차에 치였습니다(약 ${Math.round(kmh)} km/h) · 교통사고 화면으로 바뀝니다`, 3);
         setTimeout(() => { this.hitLock = false; start(sc); const C = SC.crash; C.mode = "blind"; C.kmh = kmh < 40 ? 30 : kmh < 55 ? 50 : 60; C.gapSet = true; C.gap = 9;
           if ($("k_m")) { $("k_m").value = "blind"; $("k_v").value = String(C.kmh); $("k_g").value = 9; $("k_gv").textContent = "9 m"; }
@@ -1844,10 +1845,10 @@ function vehicleGroup(type) {   // 불러온 차 모델을 한 대짜리 그룹�
 function sirenLights(g, cols) {   // 지붕 경광등(빨강·파랑 번갈아) + 둘레를 비추는 빛
   const bb = new THREE.Box3().setFromObject(g), top = bb.max.y, L = [];
   cols.forEach((c, i) => { const m = new THREE.Mesh(new THREE.BoxGeometry(0.66, 0.22, 0.34), new THREE.MeshBasicMaterial({ color: new THREE.Color(c).multiplyScalar(8), toneMapped: false })); m.position.set(i ? 0.38 : -0.38, top + 0.11, 0.2); g.add(m);   // 톤매핑을 넘는 밝기 → 밤 빛번짐(bloom)이 잡음
-    const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: SIREN_HALO, color: c, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false })); halo.scale.set(5, 5, 1); halo.position.set(i ? 0.38 : -0.38, top + 0.2, 0.2); halo.renderOrder = 5; g.add(halo); m.userData.halo = halo;
+    const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: SIREN_HALO, color: c, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false })); halo.scale.set(5, 5, 1); halo.position.set(i ? 0.38 : -0.38, top + 0.2, 0.2); halo.renderOrder = 5; halo.isLine = true;   /* GTAO 법선 그리기에서 빠지게(안 그러면 검은 네모) */ g.add(halo); m.userData.halo = halo;
     m.userData.top = top; L.push(m); });
   const pool = new THREE.Mesh(new THREE.PlaneGeometry(16, 16).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ map: SIREN_HALO, color: cols[0], transparent: true, opacity: 0.5, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }));   // 길바닥에 번지는 빛
-  pool.position.y = 0.15; pool.renderOrder = 4; g.add(pool); L.pool = pool; L.cols = cols; return L; }
+  pool.position.y = 0.15; pool.renderOrder = 4; pool.isLine = true; g.add(pool); L.pool = pool; L.cols = cols; return L; }
 const SIREN_HALO = (() => { const c = document.createElement("canvas"); c.width = c.height = 128; const g = c.getContext("2d"), gr = g.createRadialGradient(64, 64, 0, 64, 64, 64);
   gr.addColorStop(0, "rgba(255,255,255,1)"); gr.addColorStop(0.18, "rgba(255,255,255,.75)"); gr.addColorStop(0.5, "rgba(255,255,255,.18)"); gr.addColorStop(1, "rgba(255,255,255,0)"); g.fillStyle = gr; g.fillRect(0, 0, 128, 128); return new THREE.CanvasTexture(c); })();
 const EM_PL = [new THREE.PointLight(0xff2a2a, 0, 30, 1.5), new THREE.PointLight(0x2a6bff, 0, 30, 1.5)]; for (const l of EM_PL) scene.add(l);   // 경광등 빛 2개(처음부터 있어 재질 다시 컴파일 없음): 카메라에 가장 가까운 출동 차에 붙임
@@ -1863,6 +1864,7 @@ SC.crash = { hp: false, air: true, dist0: 55, tools: "큰길을 눌러 사고 �
       <div class="cr"><span>차 속도</span><select id="k_v"><option>30</option><option selected>50</option><option>60</option><option>80</option></select><b>km/h</b></div>
       <div class="cr"><span>반응 시간</span><select id="k_t"><option value="0.7">0.7초(빠름)</option><option value="1.0" selected>1.0초</option><option value="1.5">1.5초(늦음)</option></select></div>
       <div class="cr"><span id="k_gl">차와의 거리</span><input id="k_g" type="range" min="3" max="60" step="1" value="15"><b id="k_gv">15 m</b></div>
+      <div class="cr"><label class="ck"><input id="k_hr" type="checkbox"> 운전자 도주(뺑소니) — 경찰이 순찰차·CCTV로 추적</label></div>
       <div class="cr"><button id="k_go" class="btn2">출발</button><button id="k_rs" class="btn2">처음으로</button></div>
       <div id="k_r" class="note"></div>
       <div class="note"><b>실제 통계</b> · 성동구 2025년 교통사고 <b>932건</b>(차대사람 176 · 차대차 726 · 차량단독 30), 사망 5명 · 부상 1,202명.
@@ -1872,7 +1874,7 @@ SC.crash = { hp: false, air: true, dist0: 55, tools: "큰길을 눌러 사고 �
       사망 위험은 Rosén & Sander(2009) 곡선(원문 대조 전). 출동은 OpenStreetMap 의 소방서·지구대·파출소에서 길을 따라 평균 30km/h, 신고·출동 준비 2분으로 본 <b>가정</b>입니다.</div>`);
     $("k_m").onchange = e => { this.mode = e.target.value; this.gapSet = false; this.reset(); this.causeMark(); }; $("k_v").onchange = e => { this.kmh = +e.target.value; this.reset(); };
     $("k_t").onchange = e => { this.tr = +e.target.value; this.reset(); }; $("k_g").oninput = e => { this.gapSet = true; this.gap = +e.target.value; $("k_gv").textContent = this.gap + " m"; this.reset(); };
-    $("k_go").onclick = () => this.go(); $("k_rs").onclick = () => this.reset();
+    $("k_go").onclick = () => this.go(); $("k_rs").onclick = () => this.reset(); $("k_hr").onchange = () => this.reset();
     this.causeChart(); this.pickSpot(player.x, player.y);
     if (!CANNON) import("cannon-es").then(m => { CANNON = m; this.reset(); }).catch(e => { msg("물리 엔진을 불러오지 못했습니다", 3); console.warn(e); }); else this.reset(); },
   causeChart() {   // 서울 2024 법규위반별 사고(TAAS) 도넛 — 고른 원인을 앞으로 빼서 표시
@@ -1916,7 +1918,7 @@ SC.crash = { hp: false, air: true, dist0: 55, tools: "큰길을 눌러 사고 �
     const car = new CN.Body({ mass: 1500, material: mC, allowSleep: false, linearFactor: new CN.Vec3(1, 0, 1), angularFactor: new CN.Vec3(0, 0, 0) }); car.collisionFilterGroup = 1; car.collisionFilterMask = 2 | 4;   /* 1.5t, 높이·자세 고정, 속도는 매 장면 지정 */
     car.addShape(new CN.Box(new CN.Vec3(wc / 2, 0.36, Lc / 2)), new CN.Vec3(0, 0.5, 0)); car.addShape(new CN.Box(new CN.Vec3(wc * 0.44, 0.3, Lc * 0.25)), new CN.Vec3(0, 1.16, -Lc * 0.08)); W.addBody(car); this.car = car; car.addEventListener("collide", e => { if (this.state === "run" && e.body && (e.body.collisionFilterGroup === 2 || e.body.collisionFilterGroup === 4)) this.hitNow = true; });   /* 계산 도중엔 바꾸지 않고 한 걸음 뒤에 */
     const cg = vehicleGroup(type); scene.add(cg); this.objs.push(cg); extra.push(cg); this.carG = cg;
-    this.v = this.kmh / 3.6; this.pv = this.mode === "dart" ? 3.0 : 1.34; if (!this.gapSet) { this.gap = this.mode === "follow" ? Math.max(3, Math.round(this.v * this.tr * 0.45)) : Math.max(8, Math.min(60, Math.round(this.v * (this.curb - this.lane) / this.pv))); if ($("k_g")) { $("k_g").value = this.gap; $("k_gv").textContent = this.gap + " m"; } } this.carD = -(this.gap + Math.min(this.v * 2.5, 30)) - Lc / 2; this.brakeAt = Infinity; this.t = 0; this.state = "ready"; this.hitNow = false; this.res = null; this.risk = null; this.dvLead = null; this.em = []; this.hitT = null; this.vImp = null; this.slow = 0; this.restT = 0;
+    this.v = this.kmh / 3.6; this.pv = this.mode === "dart" ? 3.0 : 1.34; if (!this.gapSet) { this.gap = this.mode === "follow" ? Math.max(3, Math.round(this.v * this.tr * 0.45)) : Math.max(8, Math.min(60, Math.round(this.v * (this.curb - this.lane) / this.pv))); if ($("k_g")) { $("k_g").value = this.gap; $("k_gv").textContent = this.gap + " m"; } } this.carD = -(this.gap + Math.min(this.v * 2.5, 30)) - Lc / 2; this.brakeAt = Infinity; this.t = 0; this.state = "ready"; this.hitNow = false; this.res = null; this.risk = null; this.dvLead = null; this.em = []; this.haz = null; this.drv = null; this.flee = null; this.fleeAt = null; this.hr = !!($("k_hr") && $("k_hr").checked) && this.mode !== "follow"; this.hitT = null; this.vImp = null; this.slow = 0; this.restT = 0;
     this.rag = null; this.ragM = []; this.lead = null; this.hit2 = false; this.dvLead = null;
     if (this.mode === "follow") {   // 안전거리 미확보: 앞차(1.6t SUV)가 급정거, 뒤차는 반응 시간 뒤 제동 — 두 차 모두 물리 몸체
       const Ll = CAR_TYPES.suv, lead = new CN.Body({ mass: 1600, material: mC, allowSleep: false, linearFactor: new CN.Vec3(1, 0, 1), angularFactor: new CN.Vec3(0, 0, 0) }); lead.collisionFilterGroup = 4; lead.collisionFilterMask = 1;
@@ -1967,8 +1969,9 @@ SC.crash = { hp: false, air: true, dist0: 55, tools: "큰길을 눌러 사고 �
     const cp = this.car.position; this.carD = (cp.x - this.C.x) * this.F.x + (-cp.z - this.C.y) * this.F.y; const p = { x: cp.x, y: -cp.z };
     this.carG.position.set(p.x, 0, -p.y); this.carG.rotation.set(0, Math.atan2(this.F.x, -this.F.y), 0); },
   emTick(sdt) {   // 출동 차 이동·경광등·사이렌·일반 차 양보
+        this.afterCrash(sdt);
         { const vis = this.em.filter(u => u.g.visible).sort((a, b) => camera.position.distanceTo(a.g.position) - camera.position.distanceTo(b.g.position))[0], ph = Math.floor(performance.now() / 160) % 2;
-          EM_PL.forEach((l, i) => { if (!vis) { l.intensity = 0; return; } l.position.copy(vis.g.position).add(new THREE.Vector3(i ? 0.8 : -0.8, 3.2, 0)); l.intensity = (i === ph || vis.type === "fire") ? 90 + 260 * Math.min(1, NIGHT_U.value * 1.8) : 0; l.distance = 30 + 25 * Math.min(1, NIGHT_U.value * 1.8); if (vis.type === "fire") l.color.setHex(0xff2a2a); else l.color.setHex(i ? 0x2a6bff : 0xff2a2a); }); }
+          EM_PL.forEach((l, i) => { if (!vis) { l.intensity = 0; return; } l.position.copy(vis.g.position).add(new THREE.Vector3(i ? 0.8 : -0.8, 3.2, 0)); l.intensity = (i === ph || vis.type === "fire") ? 90 + 160 * Math.min(1, NIGHT_U.value * 1.8) : 0; l.distance = 30 + 25 * Math.min(1, NIGHT_U.value * 1.8); if (vis.type === "fire") l.color.setHex(0xff2a2a); else l.color.setHex(i ? 0x2a6bff : 0xff2a2a); }); }
         const et = this.t - this.hitT; YIELD.length = 0; YIELD.push({ x: this.road.x, y: this.road.y, r: 35 });   // 사고 현장 둘레 일반 차 멈춤
         for (const u of this.em) { this.driveEm(u, et, sdt);
           if (u.g.visible) { const ph = Math.floor(performance.now() / 160) % 2, nt = Math.min(1, NIGHT_U.value * 1.8);   // 저녁(약 0.45)부터 거의 밤만큼   // 밤일수록 후광·바닥 빛 진하게
@@ -1976,6 +1979,47 @@ SC.crash = { hp: false, air: true, dist0: 55, tools: "큰길을 눌러 사고 �
             const pc = u.lights.cols[ph % u.lights.cols.length]; u.lights.pool.material.color.setHex(pc); u.lights.pool.material.opacity = 0.18 + 0.5 * nt;
             if (!u.done) YIELD.push({ x: u.g.position.x, y: -u.g.position.z, r: 26 });   // 사이렌 울리는 차 앞뒤 일반 차가 멈춰 길을 비킴
             if (!u.snd && !u.sirenEnd) this.sirenOn(u); if (u.done && u.sirenEnd == null) u.sirenEnd = et + 4; this.sirenTick(u, !(u.sirenEnd != null && et > u.sirenEnd)); } }  },
+  afterCrash(sdt) {   // 사고 낸 차는 그 자리에 서서 비상등, 멈추면 운전자가 내려 다친 사람(추돌이면 앞차)에게 감
+    const list = this.mode === "follow" ? [this.carG, this.leadG] : [this.carG];
+    if (!this.haz) { this.haz = []; const mat = new THREE.MeshBasicMaterial({ color: new THREE.Color(0xffa020).multiplyScalar(5), toneMapped: false });
+      for (const g of list) { const bb = new THREE.Box3(); for (const c of g.children) if (c.geometry) { c.geometry.computeBoundingBox(); bb.union(c.geometry.boundingBox); }
+        for (const sx of [-1, 1]) for (const sz of [-1, 1]) { const m = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.1, 0.08), mat); m.position.set(sx * (bb.max.x - 0.18), (bb.min.y + bb.max.y) * 0.45, sz > 0 ? bb.max.z - 0.02 : bb.min.z + 0.02); g.add(m); this.haz.push(m); } } }
+    const on = !this.hr && Math.floor(performance.now() / 420) % 2 === 0; for (const m of this.haz) m.visible = on;   /* 뺑소니는 비상등도 안 켬 */
+    if (!this.drv && this.v < 0.1 && !this.hr) { const cp = this.car.position, L = { x: -this.F.y, y: this.F.x }, a = makeActor(MAN, 0xffffff, 0xdddddd);
+      this.drv = { x: cp.x + L.x * 1.3, y: -cp.z + L.y * 1.3, a, head: 0, sp: 1.6 }; this.objs.push(a.root); }
+    if (this.drv) { const tg = this.rag ? { x: this.rag.pelvis.position.x, y: -this.rag.pelvis.position.z } : { x: this.lead.position.x + (-this.F.y) * 1.4, y: -this.lead.position.z + this.F.x * 1.4 };
+      const d = Math.hypot(tg.x - this.drv.x, tg.y - this.drv.y), mv = d > 1.3; if (mv) moveTo(this.drv, tg.x, tg.y, this.drv.sp, sdt, 0.3); showActor(this.drv, mv, sdt, 1.2); } },
+  roadNode(x, y) { let b = -1, bd = 1e9; for (let i = 0; i < NODES.length; i++) { if (NODES[i].w < 2.5 || !NADJ[i].some(k => NODES[k].w >= 2.5)) continue;   /* 차길끼리 이어진 마디만 */ const d = (NODES[i].x - x) ** 2 + (NODES[i].y - y) ** 2; if (d < bd) { bd = d; b = i; } } return b; },
+  pathTo(x0, y0, x1, y1) {   // 차가 다니는 길로 (x0,y0) → (x1,y1) 점 목록
+    const a = this.roadNode(x0, y0), b = this.roadNode(x1, y1), D = dijkstraCar([b], 2.5), path = [a];
+    while (D[path[path.length - 1]] > 0.5 && path.length < 3000) { const i = path[path.length - 1]; let nx = -1, nd = D[i]; for (const k of NADJ[i]) if (D[k] < nd && NODES[k].w >= 2.5) { nd = D[k]; nx = k; } if (nx < 0) break; path.push(nx); }
+    const pts = [{ x: x0, y: y0 }].concat(path.map(i => ({ x: NODES[i].x, y: NODES[i].y })), [{ x: x1, y: y1 }]), cum = [0]; for (let i = 1; i < pts.length; i++) cum.push(cum[i - 1] + Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y)); return { pts, cum }; },
+  along(R, sd, ofs) { let k = 1; while (k < R.cum.length - 1 && R.cum[k] < sd) k++; const a = R.pts[k - 1], b = R.pts[k], L = (R.cum[k] - R.cum[k - 1]) || 1, t = Math.max(0, Math.min(1, (sd - R.cum[k - 1]) / L)), f = { x: (b.x - a.x) / L, y: (b.y - a.y) / L };
+    const cx = a.x + (b.x - a.x) * t, cy = a.y + (b.y - a.y) * t; let o = ofs; while (o > 0 && inBuilding(cx + f.y * o, cy - f.x * o)) o -= 0.55; return { x: cx + f.y * Math.max(0, o), y: cy - f.x * Math.max(0, o), h: Math.atan2(f.x, -f.y) }; },
+  startFlee() {   // 지도 가장자리 쪽 먼 길로 달아남(50km/h 안팎), 지나는 방범 CCTV 에 찍힘
+    const cp = this.car.position, n0 = this.roadNode(cp.x, -cp.z), D0 = dijkstraCar([n0], 2.5), cand = [];
+    for (let i = 0; i < NODES.length; i++) if (isFinite(D0[i]) && D0[i] > 650 && D0[i] < 1100 && NODES[i].w >= 2.5) cand.push(i);
+    if (!cand.length) { let bi = -1, bd = 0; for (let i = 0; i < NODES.length; i++) if (isFinite(D0[i]) && D0[i] > bd && NODES[i].w >= 2.5) { bd = D0[i]; bi = i; } if (bi < 0) return; cand.push(bi); }   /* 그 거리대 길이 없으면 갈 수 있는 가장 먼 곳 */
+    const dst = NODES[pick(cand)]; const R = this.pathTo(cp.x, -cp.z, dst.x, dst.y);
+    this.world.removeBody(this.car); this.flee = { ...R, s: 0, v: Math.max(11, this.vImp || 12), on: true, cctv: [], t0: this.t };
+    // 인근 순찰차: 사고 지점에서 길로 350~600m 떨어진 곳을 돌던 차가 신고 1분 뒤 추적 시작(가정)
+    const Dc = dijkstraCar([this.roadNode(this.road.x, this.road.y)], 2.5), pc = []; for (let i = 0; i < NODES.length; i++) if (isFinite(Dc[i]) && Dc[i] > 350 && Dc[i] < 600 && NODES[i].w >= 2.5) pc.push(i);
+    if (!pc.length) for (let i = 0; i < NODES.length; i++) if (isFinite(Dc[i]) && Dc[i] > 150 && NODES[i].w >= 2.5) pc.push(i);
+    if (pc.length) { const n = NODES[pick(pc)], g = vehicleGroup("police"); g.visible = false; scene.add(g); this.objs.push(g); extra.push(g);
+      this.em.push({ type: "police", label: "순찰차(인근 순찰 중)", base: "추적", g, lights: sirenLights(g, [0xff2a2a, 0x2a6bff]), chase: true, x: n.x, y: n.y, enter: EM_CALL, dep: EM_CALL, arr: EM_CALL, s: 0, R: null, rt: 0, done: false, km: 0, stopAt: 16 }); } },
+  fleeTick(sdt) { const F = this.flee; if (!F || !F.on) return; F.s = Math.min(F.cum[F.cum.length - 1], F.s + F.v * sdt); const p = this.along(F, F.s, 2.0);
+    this.carG.position.set(p.x, 0, -p.y); this.carG.rotation.set(0, p.h, 0); F.x = p.x; F.y = p.y;
+    for (const [i, c] of (city.street ? city.street.cc : []).entries()) if (!F.cctv.includes(i) && Math.hypot(c[0] - p.x, c[1] - p.y) < 22) { F.cctv.push(i);   // 방범 CCTV 포착 표시
+      const r = new THREE.Mesh(new THREE.RingGeometry(1.6, 2.2, 24).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0xff3a3a, transparent: true, opacity: 0.85, depthWrite: false })); r.position.set(c[0], 0.3, -c[1]); r.isLine = true; scene.add(r); this.objs.push(r); extra.push(r);
+      msg(`방범 CCTV 에 도주 차량 포착(${F.cctv.length}곳)`, 1.5); }
+    if (F.s >= F.cum[F.cum.length - 1] - 0.5) { F.on = false; F.gone = true; F.at = this.t - this.hitT; this.carG.visible = false; msg(`도주 차량이 지도 밖으로 빠져나감 · CCTV ${F.cctv.length}곳 기록으로 추적 중`, 4); } },
+  driveChase(u, et, sdt) {   // 순찰차: 1초마다 도주 차 쪽 길을 다시 찾아 65km/h 로 뒤쫓음(가정), 10m 안이면 검거 · 놓치면 현장으로
+    if (et < u.enter || u.done) return; u.g.visible = true; const F = this.flee, tg = F && F.on ? { x: F.x, y: F.y } : { x: this.road.x, y: this.road.y };
+    u.rt -= sdt; if (!u.R || u.rt <= 0) { u.R = this.pathTo(u.x, u.y, tg.x, tg.y); u.s = 0; u.rt = 1; }
+    u.s = Math.min(u.R.cum[u.R.cum.length - 1], u.s + 18 * sdt); const p = this.along(u.R, u.s, 2.0); u.x = p.x; u.y = p.y; u.g.position.set(p.x, 0, -p.y); u.g.rotation.set(0, p.h, 0);
+    const d = Math.hypot(tg.x - p.x, tg.y - p.y);
+    if (F && F.on && d < 10) { F.on = false; F.caught = true; F.at = et; u.done = true; u.at = et; msg(`도주 차량 검거 · 사고 후 ${Math.floor(et / 60)}분 ${Math.round(et % 60)}초 · CCTV ${F.cctv.length}곳 포착`, 5); }
+    else if (!(F && F.on) && d < u.stopAt) { u.done = true; u.at = et; } },
   placeLead() { const lp = this.lead.position; this.leadG.position.set(lp.x, 0, lp.z); this.leadG.rotation.set(0, Math.atan2(this.F.x, -this.F.y), 0); this.leadDNow = (lp.x - this.C.x) * this.F.x + (-lp.z - this.C.y) * this.F.y; },
   go() { if (!this.world) return; if (this.state !== "ready") this.reset(); this.state = "run"; },
   impact() { if (this.mode === "follow") { this.state = "hit"; this.hit2 = true; this.hitT = this.t; this.vImp = this.v - this.vL; this.vLead0 = this.vL; this.slow = 3; shake = Math.min(1.2, this.vImp / 12);
@@ -1985,6 +2029,7 @@ SC.crash = { hp: false, air: true, dist0: 55, tools: "큰길을 눌러 사고 �
     for (const b of Object.values(this.rag)) { b.type = CN.Body.DYNAMIC; b.mass = b.userData.m; b.updateMassProperties(); b.velocity.copy(vp); b.wakeUp(); }
     this.state = "hit"; this.hitT = this.t; this.vImp = this.v; this.slow = 3; this.hitP = { x: this.rag.pelvis.position.x, y: -this.rag.pelvis.position.z };
     if (this.mode === "blind") this.brakeAt = this.t + this.tr; shake = Math.min(1.5, this.v / 20);
+    if (this.hr) { this.brakeAt = Infinity; this.fleeAt = this.t + 0.6; }   /* 뺑소니: 서지 않고 0.6초 뒤 길을 따라 달아남 */
     this.risk = 1 / (1 + Math.exp(6.9 - 0.09 * this.vImp * 3.6)); this.dispatch(); },
   dispatch() {   // 사고 지점까지 길(폭 4m 이상)로 가장 가까운 기지에서 출동
     const ni = (() => { let best = -1, bd = 1e9; for (let i = 0; i < NODES.length; i++) { if (NODES[i].w < 4 || !NADJ[i].length) continue; const d = Math.hypot(NODES[i].x - this.road.x, NODES[i].y - this.road.y); if (d < bd) { bd = d; best = i; } } return best; })();
@@ -1999,6 +2044,7 @@ SC.crash = { hp: false, air: true, dist0: 55, tools: "큰길을 눌러 사고 �
       const pts = path.map(i => ({ x: NODES[i].x, y: NODES[i].y })).concat([{ x: this.road.x, y: this.road.y }]), cum = [0]; for (let i = 1; i < pts.length; i++) cum.push(cum[i - 1] + Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y));
       this.em.push({ type, label, base: p.bs.name, g, lights, pts, cum, s: 0, dep, enter: dep + p.out / EM_V, arr, stopAt, done: false, km: p.tot / 1000 }); } },
   driveEm(u, et, sdt) {   // 길 마디를 따라 오다가 사고 지점 앞에서 차례로 멈춤(구급차 8m · 순찰차 16m · 소방차 25m)
+    if (u.chase) return this.driveChase(u, et, sdt);
     if (et < u.enter || u.done) return; u.g.visible = true; const tot = u.cum[u.cum.length - 1];
     u.s = Math.min(tot - u.stopAt, u.s + EM_V * sdt); let k = 1; while (k < u.cum.length - 1 && u.cum[k] < u.s) k++;
     const a = u.pts[k - 1], b = u.pts[k], L = (u.cum[k] - u.cum[k - 1]) || 1, t = Math.max(0, Math.min(1, (u.s - u.cum[k - 1]) / L)), f = { x: (b.x - a.x) / L, y: (b.y - a.y) / L };
@@ -2009,7 +2055,7 @@ SC.crash = { hp: false, air: true, dist0: 55, tools: "큰길을 눌러 사고 �
     if (!this.world) { setRows([["상태", CANNON ? "준비 중" : "물리 엔진 불러오는 중"]]); return; }
     let sdt = dt; if (this.slow > 0) { this.slow -= dt; sdt = dt * 0.25; }   // 충돌 순간 1/4 느리게
     const allDone = this.em.length && this.em.every(u => u.done), et0 = this.hitT == null ? 0 : this.t - this.hitT, firstIn = this.em.length ? Math.min(...this.em.map(u => u.enter)) : 1e9;
-    if (this.state === "hit" && et0 > 4 && !allDone) sdt = dt * (et0 < firstIn - 2 ? 40 : 2.5);   // 신고·출동 준비·지도 밖 이동은 40배로 건너뛰고, 동네에 들어오면 2.5배로 보여 줌
+    const chasing = this.flee && this.flee.on; if (this.state === "hit" && et0 > 4 && !allDone) sdt = dt * (chasing ? 3 : et0 < firstIn - 2 ? 40 : 2.5);   /* 도주·추적 중엔 3배로 보여 줌 */   // 신고·출동 준비·지도 밖 이동은 40배로 건너뛰고, 동네에 들어오면 2.5배로 보여 줌
     if (this.mode === "follow" && (this.state === "run" || this.state === "hit")) { this.t += sdt; const dec = this.mu() * 9.81 * sdt;
       if (!this.hit2) { if (this.t >= this.leadBrake) this.vL = Math.max(0, this.vL - dec); if (this.t >= this.brakeAt) this.v = Math.max(0, this.v - dec);
         if (this.t >= this.leadBrake && this.brakeAt === Infinity) this.brakeAt = this.leadBrake + this.tr;   /* 뒤차는 앞차 브레이크등을 보고 반응 시간 뒤 제동 */
@@ -2032,20 +2078,23 @@ SC.crash = { hp: false, air: true, dist0: 55, tools: "큰길을 눌러 사고 �
       if (this.state === "run") { if (this.pgo && this.pu < this.curb + this.lane + 3) { this.pu += this.pv * sdt; this.ph += sdt * (this.mode === "dart" ? 9 : 5.5); } this.pose(this.ph);
         const lat = this.pu - (this.curb - this.lane);   // 차로 가운데에서의 옆 거리
         if (this.v === 0 && this.pgo) { this.state = "stop"; msg(`차가 ${(-front).toFixed(1)} m 앞에서 멈췄습니다 · 충돌 없음`, 4); } }
-      this.placeCar(); this.world.step(1 / 240, sdt, 40); if (this.hitNow && this.state === "run") { this.hitNow = false; this.impact(); }
+      if (this.flee) this.fleeTick(sdt); else this.placeCar(); this.world.step(1 / 240, sdt, 40); if (this.hitNow && this.state === "run") { this.hitNow = false; this.impact(); }
+      if (this.hr && !this.flee && this.fleeAt != null && this.t >= this.fleeAt) this.startFlee();
       if (this.state === "hit") { const pv = this.rag.pelvis.velocity.length(); if (pv < 0.2) this.restT += sdt; else this.restT = 0;
         if (!this.res && this.restT > 1.2) { const p = this.rag.pelvis.position; this.res = { thrown: Math.hypot(p.x - this.hitP.x, -p.z - this.hitP.y) }; }
         this.emTick(sdt); }
       if (this.t - (this.lastC || -1) > 0.05 && (this.state === "run" || this.t - this.hitT < 12)) { this.lastC = this.t; this.ch.push(this.t.toFixed(1), [this.v * 3.6, this.rag.pelvis.velocity.length() * 3.6]); } }
     for (const [m, b] of this.ragM) { m.position.copy(b.position); m.quaternion.copy(b.quaternion); }
-    if (this.state === "hit" && this.rag) { const lead = (this.t - this.hitT > 4) && this.em.find(u => u.g.visible && !u.done), p = this.rag.pelvis.position, tx = lead ? lead.g.position.x : p.x, ty = lead ? -lead.g.position.z : -p.z;   // 들어오는 출동 차를 따라 보다가 도착하면 현장으로
+    if (this.state === "hit" && this.flee && this.flee.on) { const pc = this.em.find(u => u.chase && u.g.visible), tx = pc ? (pc.x + this.flee.x) / 2 : this.flee.x, ty = pc ? (pc.y + this.flee.y) / 2 : this.flee.y; player.x += (tx - player.x) * 0.08; player.y += (ty - player.y) * 0.08; }
+    else if (this.state === "hit" && this.rag) { const lead = (this.t - this.hitT > 4) && this.em.find(u => u.g.visible && !u.done), p = this.rag.pelvis.position, tx = lead ? lead.g.position.x : p.x, ty = lead ? -lead.g.position.z : -p.z;   // 들어오는 출동 차를 따라 보다가 도착하면 현장으로
       player.x += (tx - player.x) * 0.06; player.y += (ty - player.y) * 0.06; }
     this.info(); },
   info() { const f = s => s == null ? "-" : `${Math.floor(s / 60)}분 ${String(Math.round(s % 60)).padStart(2, "0")}초`, et = this.hitT == null ? null : this.t - this.hitT;
     const rows = this.mode === "follow" ? [["추돌 속도 차", this.vImp == null ? (this.state === "stop" ? "충돌 없음" : "-") : (this.vImp * 3.6).toFixed(0) + " km/h"], ["앞차 속도 변화(Δv)", this.dvLead == null ? "-" : "+" + (this.dvLead * 3.6).toFixed(0) + " km/h"],
       ["필요한 간격(반응 거리)", (this.kmh / 3.6 * this.tr).toFixed(1) + " m"], ["실제 간격", this.gap + " m"], ["노면 마찰", this.mu() + (ENV.weather === "clear" ? " 마름" : ENV.weather === "rain" ? " 젖음" : " 눈")]] : [["충돌 속도", this.vImp == null ? (this.state === "stop" ? "충돌 없음" : "-") : (this.vImp * 3.6).toFixed(0) + " km/h"], ["사망 위험(참고)", this.risk == null ? "-" : Math.round(this.risk * 100) + "%"],
       ["정지거리(계산)", this.stopD.toFixed(1) + " m"], ["노면 마찰", this.mu() + (ENV.weather === "clear" ? " 마름" : ENV.weather === "rain" ? " 젖음" : " 눈")], ["더미가 밀려난 거리", this.res ? this.res.thrown.toFixed(1) + " m" : "-"]];
-    for (const u of this.em || []) { const st = u.done ? `${f(u.at)} 도착` : et == null ? "-" : et < EM_CALL ? "신고 접수 중" : et < u.dep ? "출동 준비" : et < u.enter ? `지도 밖 이동 · ${f(u.arr)} 도착 예상` : `사이렌 · 접근 중(${f(u.arr)} 예상)`; rows.push([`${u.label} · ${u.base}`, st]); }
+    if (this.flee) rows.push(["도주 차량", this.flee.caught ? `검거(사고 후 ${f(this.flee.at)}) · CCTV ${this.flee.cctv.length}곳 포착` : this.flee.gone ? `지도 밖 도주 · CCTV ${this.flee.cctv.length}곳 기록` : `도주 중 · CCTV ${this.flee.cctv.length}곳 포착`]);
+    for (const u of this.em || []) { const st = u.chase ? (u.done ? (this.flee && this.flee.caught ? `${f(u.at)} 검거` : `${f(u.at)} 현장 도착`) : et == null || et < u.enter ? "신고 접수 대기" : "사이렌 · 추적 중") : u.done ? `${f(u.at)} 도착` : et == null ? "-" : et < EM_CALL ? "신고 접수 중" : et < u.dep ? "출동 준비" : et < u.enter ? `지도 밖 이동 · ${f(u.arr)} 도착 예상` : `사이렌 · 접근 중(${f(u.arr)} 예상)`; rows.push([`${u.label} · ${u.base}`, st]); }
     setRows(rows);
     if ($("k_r") && this.mode === "follow") $("k_r").innerHTML = `${this.kmh} km/h 로 같이 달리다 앞차가 급정거(${this.mu()}g). 뒤차는 반응 ${this.tr}초 뒤 같은 힘으로 제동 → 두 차가 같은 힘으로 서면 <b>반응 시간 동안 달린 거리 ${(this.kmh / 3.6 * this.tr).toFixed(1)} m</b> 보다 간격이 좁을 때 추돌합니다. 지금 간격 <b>${this.gap} m</b>.`;
     else if ($("k_r")) $("k_r").innerHTML = `${this.kmh} km/h · 반응 ${this.tr}초 → 반응 거리 <b>${(this.kmh / 3.6 * this.tr).toFixed(1)} m</b> + 제동 거리 <b>${((this.kmh / 3.6) ** 2 / (2 * this.mu() * 9.81)).toFixed(1)} m</b> = 정지거리 <b>${this.stopD.toFixed(1)} m</b>` + (this.mode === "dart" ? `<br>사람이 뛰기 시작할 때 차와 거리 <b>${this.gap} m</b>` : "");
