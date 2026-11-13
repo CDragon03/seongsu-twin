@@ -262,8 +262,11 @@ function glowFor(m) {   // 창유리: 2.6×3m 칸마다 무작위로 불 켜짐,
     if (!sh.vertexShader.includes("varying vec3 vTW;")) sh.vertexShader = TRI_V[0] + sh.vertexShader.replace(...TRI_V[1]);
     sh.fragmentShader = (sh.fragmentShader.includes("varying vec3 vTW;") ? "" : "varying vec3 vTW; varying vec3 vTN;\n") + "uniform float uNight;\n" + sh.fragmentShader.replace("#include <emissivemap_fragment>", `#include <emissivemap_fragment>
   { vec3 cc = floor(vTW / vec3(2.6, 3.0, 2.6)); float hh = fract(sin(dot(cc, vec3(12.9898, 78.233, 45.164))) * 43758.5453);
-    float lit = ${shop ? "1.0" : "step(0.45, hh)"}; vec3 warm = mix(vec3(1.0, 0.7, 0.4), vec3(0.85, 0.92, 1.0), step(0.85, hh));
-    totalEmissiveRadiance += uNight * lit * warm * ${shop ? "2.6" : "(0.9 + hh * 0.8)"}; }`); };
+    float h2 = fract(hh * 57.31), lit = ${shop ? "1.0" : "step(0.62, hh)"}; vec3 warm = h2 < 0.6 ? vec3(1.0, 0.72, 0.42) : h2 < 0.88 ? vec3(1.0, 0.93, 0.82) : vec3(0.55, 0.7, 1.0);
+    float fy = fract(vTW.y / 3.0), fx = fract((abs(vTN.x) > 0.5 ? vTW.z : vTW.x) / 2.6);   // 칸 안 위치
+    float shade = h2 > 0.5 ? mix(0.45, 1.0, smoothstep(0.15, 0.75, fy)) : 0.75 + 0.25 * step(0.5, fract(fy * 9.0));   // 커튼(아래가 어두움) 또는 블라인드 줄
+    shade *= mix(0.55, 1.0, smoothstep(0.0, 0.5, abs(fx - 0.5) * 2.0 + h2 * 0.5));
+    totalEmissiveRadiance += uNight * lit * warm * shade * ${shop ? "1.5" : "(0.35 + fract(hh * 13.7) * 0.5)"}; }`); };
   m.customProgramCacheKey = () => (key ? key.call(m) : "") + "|glow" + (shop ? "S" : "W"); m.needsUpdate = true; }
 const LAMP_GLOW = { pools: null, heads: null };
 function timeEnv() {   // applyEnv 안에서 부름: 해·하늘·빛을 시간대에 맞춤
@@ -273,13 +276,13 @@ function timeEnv() {   // applyEnv 안에서 부름: 해·하늘·빛을 시간�
     const sp = sunPos(d, best); SUN_DIR = new THREE.Vector3(Math.sin(sp.az) * Math.cos(sp.alt), Math.max(0.06, Math.sin(sp.alt)), -Math.cos(sp.az) * Math.cos(sp.alt));
     night = 0.45; sunCol = 0xff9a55; if (u) { u.top.value.set(0x3f4c78); u.bot.value.set(0xf0a37a); } setMood(0xe8a789, 520, 0.2, 1.9); renderer.toneMappingExposure = 0.95; }
   else if (t === "night") { SUN_DIR = new THREE.Vector3(-0.35, 0.75, 0.55).normalize();   // 달빛 방향(고정)
-    night = 1; sunCol = 0x9fb4ff; if (u) { u.top.value.set(0x04070e); u.bot.value.set(0x18213a); } setMood(0x141c30, 420, 0.05, 0.16); renderer.toneMappingExposure = 1.0; }
+    night = 1; sunCol = 0x9fb4ff; if (u) { u.top.value.set(0x04070e); u.bot.value.set(0x18213a); } setMood(0x141c30, 420, 0.13, 0.22); renderer.toneMappingExposure = 1.05; }   /* 도시 밤하늘 빛: 길과 사람이 어렴풋이 보이게 */
   else { if (u) { u.top.value.copy(SKY_DEF.top); u.bot.value.copy(SKY_DEF.bot); } renderer.toneMappingExposure = 0.85; }
   if (t !== "day" && ENV.weather !== "clear" && u) { u.top.value.multiplyScalar(0.6); u.bot.value.multiplyScalar(0.7); if (scene.background.isColor) scene.background.multiplyScalar(0.7); scene.fog.color.multiplyScalar(0.7); }
   sun.color.setHex(sunCol); NIGHT_U.value = night; envDim(t === "night" ? 0.05 : t === "dusk" ? 0.3 : 0.55);
   if (window.__signMat) window.__signMat.emissiveIntensity = 0.12 + 1.2 * night;
   if (LAMP_GLOW.pools) { LAMP_GLOW.pools.visible = LAMP_GLOW.heads.visible = night > 0.3; LAMP_GLOW.pools.material.uniforms.uA.value = night; }
-  if (window.__bloom) { window.__bloom.enabled = night > 0.3; window.__bloom.strength = 0.55 * night; }
+  if (window.__bloom) { window.__bloom.enabled = night > 0.3; window.__bloom.strength = 0.3 * night; window.__bloom.threshold = 0.92; }
   renderer.shadowMap.needsUpdate = true; }
 // 버튼
 { const d = document.createElement("div"); d.id = "wx";
@@ -544,7 +547,22 @@ function updateTraffic(dt) {   // 차끼리·사람과 부딪히지 않게: 같�
     { const a = wayAt(o.w.p, o.L, Math.max(0, o.s - 0.5), 0), b = wayAt(o.w.p, o.L, Math.min(o.T, o.s + 0.5), 0), l = Math.hypot(b.x - a.x, b.y - a.y) || 1; o.fx = (b.x - a.x) / l * o.dir; o.fy = (b.y - a.y) / l * o.dir; }
     o.px = p.x; o.py = p.y;
     T_.q.setFromAxisAngle(T_.up, p.h + (o.dir > 0 ? Math.PI : 0)); T_.m.compose(V(p.x, p.y, 0), T_.q, T_.one); if (T_.glb) { const sl = T_.glb.moving[i]; for (const im of T_.glb.ims[sl.type]) im.setMatrixAt(sl.i, T_.m); } else T_.im.setMatrixAt(base + i, T_.m); });
-  if (T_.glb) { for (const L of Object.values(T_.glb.ims)) for (const im of L) im.instanceMatrix.needsUpdate = true; } else T_.im.instanceMatrix.needsUpdate = true; }
+  if (T_.glb) { for (const L of Object.values(T_.glb.ims)) for (const im of L) im.instanceMatrix.needsUpdate = true; } else T_.im.instanceMatrix.needsUpdate = true;
+  try {
+  if (!T_.lamps) { const two = (w, h, d, sep) => mergeGeometries([new THREE.BoxGeometry(w, h, d).translate(-sep, 0, 0), new THREE.BoxGeometry(w, h, d).translate(sep, 0, 0)]);   // 전조등(흰빛 2개)·후미등(빨강 2개)·앞 길바닥 빛
+    const mk = (geo, col, k) => { const im = new THREE.InstancedMesh(geo, new THREE.MeshBasicMaterial({ color: new THREE.Color(col).multiplyScalar(k), toneMapped: false }), cars.length); im.frustumCulled = false; im.visible = false; scene.add(im); return im; };
+    const pool = new THREE.InstancedMesh(new THREE.PlaneGeometry(4.2, 9).rotateX(-Math.PI / 2).translate(0, 0, -4.5), new THREE.MeshBasicMaterial({ map: SIREN_HALO, color: 0xfff2d0, transparent: true, opacity: 0.28, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }), cars.length); pool.frustumCulled = false; pool.visible = false; pool.isLine = true; pool.renderOrder = 4; scene.add(pool);
+    T_.lamps = { head: mk(two(0.3, 0.12, 0.05, 0.6), 0xfff4d6, 5), tail: mk(two(0.3, 0.1, 0.05, 0.62), 0xff2010, 4), pool }; }
+  { const on = NIGHT_U.value > 0.3, Lm = T_.lamps; Lm.head.visible = Lm.tail.visible = Lm.pool.visible = on;
+    if (on) { const hid = T_.hidM || (T_.hidM = new THREE.Matrix4().makeScale(0, 0, 0)), fwd = new THREE.Vector3(), pos = new THREE.Vector3(), qq = new THREE.Quaternion();
+      cars.forEach((o, i) => { if (o.crashed || o.px == null) { Lm.head.setMatrixAt(i, hid); Lm.tail.setMatrixAt(i, hid); Lm.pool.setMatrixAt(i, hid); return; }
+        const type = T_.glb ? T_.glb.moving[i].type : "sedan", hl = (CAR_TYPES[type] || 4.6) / 2, sc = type === "scooter" ? 0.35 : 1, hY = type === "scooter" ? 0.95 : type === "fire" || type === "parcel" || type === "ambulance" ? 0.95 : 0.68;
+        qq.setFromAxisAngle(T_.up, Math.atan2(-o.fx, o.fy)); const S3 = new THREE.Vector3(sc, 1, 1);   // 모델 앞 = -z
+        T_.m.compose(V(o.px + o.fx * (hl - 0.03), o.py + o.fy * (hl - 0.03), hY), qq, S3); Lm.head.setMatrixAt(i, T_.m);
+        T_.m.compose(V(o.px - o.fx * (hl - 0.03), o.py - o.fy * (hl - 0.03), hY + 0.15), qq, S3); Lm.tail.setMatrixAt(i, T_.m);
+        T_.m.compose(V(o.px + o.fx * hl, o.py + o.fy * hl, 0.14), qq, T_.one); Lm.pool.setMatrixAt(i, T_.m); });
+      Lm.head.instanceMatrix.needsUpdate = Lm.tail.instanceMatrix.needsUpdate = Lm.pool.instanceMatrix.needsUpdate = true; } }
+  } catch (e) {} }
 
 // ── 길 그래프(보행자가 걸어 다닐 길) ──
 const NODES = [], NADJ = [], nmap = new Map();
@@ -640,7 +658,11 @@ if (city.street && city.official && city.official.xw) { const ST = city.street, 
   const oxw = []; for (const [x, y, lanes] of O.xw) { const n = nearWay(x, y); if (!n || n.d > 14 || n.w < 2.5) continue; if (oxw.some(q => Math.hypot(q[0] - n.x, q[1] - n.y) < 7)) continue; oxw.push([n.x, n.y, n.ang, Math.max(2 * n.w, 4), 3.0, 1]); }   // 실제 횡단보도(성동구 자료) → 가까운 길에 직각으로
   ST.xw = ST.xw.filter(q => !oxw.some(o => Math.hypot(o[0] - q[0], o[1] - q[1]) < 18)).concat(oxw); ST.sl = ST.sl.filter(q => !oxw.some(o => Math.hypot(o[0] - q[0], o[1] - q[1]) < 18));
   if (O.cam.length) ST.cc = O.cam.map(([x, y]) => { const n = nearWay(x, y); return [x, y, n ? Math.atan2(n.y - y, n.x - x) - Math.PI / 2 : 0]; });   // 실제 카메라 위치(방범 106·주정차 9·신호과속 6), 길 쪽을 봄
-  ST.kz = O.sg.map(([x, y]) => { const n = nearWay(x, y); return [x, y, n ? n.ang + Math.PI / 2 : 0]; }); }
+  ST.kz = O.sg.map(([x, y]) => { const n = nearWay(x, y); return [x, y, n ? n.ang + Math.PI / 2 : 0]; });
+  const inRoad = (x, y) => { for (const w of city.ways) { if (w.w < 2) continue; const p = w.p; for (let i = 2; i < p.length; i += 2) { const ax = p[i - 2], ay = p[i - 1], dx = p[i] - ax, dy = p[i + 1] - ay, l2 = dx * dx + dy * dy || 1, t = Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / l2));
+      if (Math.hypot(x - ax - dx * t, y - ay - dy * t) < w.w - 0.45) return true; } } return false; };   // 차도 안(가장자리 0.45m 안쪽)
+  const n0 = ST.bo.length + ST.yb.length + ST.kz.length; ST.bo = ST.bo.filter(([x, y]) => !inRoad(x, y)); ST.yb = ST.yb.filter(([x, y]) => !inRoad(x, y)); ST.kz = ST.kz.filter(([x, y]) => !inRoad(x, y)); ST.rs = ST.rs.filter(([x, y]) => !inRoad(x, y));
+  window.__roadClean = n0 - ST.bo.length - ST.yb.length - ST.kz.length; }
 if (city.street && city.street.xw) { const ST = city.street, up = new THREE.Vector3(0, 1, 0);
   if (city.official && city.official.ar && city.official.ar.length) {   // 노면 방향 화살표(서울시 방향표시 자료 실제 위치·각도·종류 771개)
     const KIND = { "007": "S", "005": "L", "006": "R", "008": "SL", "009": "SR", "010": "U", "011": "LU", "013": "LR", "014": "SLR", "015": "SU", "001": "Rx", "002": "Sx", "012": "Lx" }, keys = [...new Set(Object.values(KIND))];
@@ -1015,7 +1037,7 @@ function clearAll() {
 function stepWalker(w, dt, speed) {
   const n = NODES[w.to]; let tx = n.x, ty = n.y;
   const f = NODES[w.from], dx0 = n.x - f.x, dy0 = n.y - f.y, L0 = Math.hypot(dx0, dy0) || 1;
-  tx += -dy0 / L0 * w.off * (n.w || 4) * 0.5; ty += dx0 / L0 * w.off * (n.w || 4) * 0.5;
+  { const hw = n.w || 4, lat = hw >= 4 ? (w.off >= 0 ? 1 : -1) * (hw - 0.9 + w.off * 0.4) : w.off * hw * 0.5; tx += -dy0 / L0 * lat; ty += dx0 / L0 * lat; }   // 큰길(반폭 4m↑)은 차도 말고 가장자리 보도 쪽
   const dx = tx - w.x, dy = ty - w.y, d = Math.hypot(dx, dy);
   if (d < 1.2) {
     let nb = NADJ[w.to].filter(k => k !== w.from); if (!nb.length) nb = NADJ[w.to];
@@ -2014,7 +2036,7 @@ SC.crash = { hp: false, air: true, dist0: 55, tools: "큰길을 눌러 사고 �
     const a = wayAt(w.p, L, s - 75, 0), b = wayAt(w.p, L, s, 0), dl = Math.hypot(b.x - a.x, b.y - a.y);
     this.F = { x: (b.x - a.x) / dl, y: (b.y - a.y) / dl };   // 차가 가는 방향(지도 좌표)
     this.G = { x: -this.F.y, y: this.F.x };                 // 왼쪽(사람이 건너가는 방향)
-    this.lane = w.w >= 6.5 ? w.w * 0.25 : w.w * 0.3; this.curb = w.w / 2 + 1.2;
+    this.lane = w.w >= 6.5 ? w.w * 0.25 : w.w * 0.5; this.curb = w.w + 0.6;   // w.w = 길 반폭(보도 포함)
     this.C = { x: b.x - this.G.x * this.lane, y: b.y - this.G.y * this.lane };   // 충돌 지점(차로 가운데)
     this.road = { x: b.x, y: b.y }; player.x = b.x; player.y = b.y; if (CANNON) this.reset(); },
   onPick(b, x, y) { if (this.state === "run" || this.state === "hit") return; this.pickSpot(x, y); },
