@@ -193,6 +193,12 @@ OFF["sz"] = [[r2(x), r2(y), r["시설명"], r["시설종류"]] for r in _rows("s
 OFF["sg"] = [[r2(x), r2(y)] for r in _rows("signs_u.csv") for x, y in _ll(r, "Y좌표(위도)", "X좌표(경도)") if _inb(x, y)]
 OFF["xw"] = [[r2(x), r2(y), int(float(r.get("차로수") or 2)), 1 if r.get("보행자신호등 유무") == "Y" else 0] for r in _rows("crosswalk_u.csv") for x, y in _ll(r, "Y좌표(위도)", "X좌표(경도)") if _inb(x, y)]
 OFF["cam"] = [[r2(x), r2(y), r.get("용도", "")] for r in _rows("camera_u.csv") for x, y in _ll(r, "Y좌표(위도)", "X좌표(경도)") if _inb(x, y)]
+# 노면 방향표시: 서울시 「방향표시 관련 정보」(OA-15536, A055_P 2026-09-10) — 좌표 EPSG:5186, DRN = 동쪽 기준 반시계 각도(길 방향과 평균 3° 차이로 확인), 종류코드는 정의서
+_AJ = os.path.join(D, "data", "more", "arrows_area.json")
+OFF["ar"] = [[a[0], a[1], a[2], a[4]] for a in json.load(open(_AJ))] if os.path.exists(_AJ) else []
+# 공장: 성동구 공장현황(주소를 좌표로 찾은 것만, data/more/geocode_factory.py)
+_FJ2 = os.path.join(D, "data", "more", "factories.json")
+OFF["fac"] = [[f["x"], f["y"], f["n"], f["kind"], f["prod"]] for f in json.load(open(_FJ2, encoding="utf-8")) if _inb(f["x"], f["y"])] if os.path.exists(_FJ2) else []
 print("공식 교통안전시설", {k: len(v) for k, v in OFF.items()})
 out = {"stations": stations, "trees": TREES, "street": STREET, "shelters": SHEL, "facilities": FAC, "official": OFF, "exits2": exits2, "buildings": B, "roads": R, "alleys": [r2(v) for t_ in AL for v in t_], "ways": W_,
        "ground": {"img": "ground.jpg", "corners": GR["corners"]}, "exits": EX, "viaduct": V,

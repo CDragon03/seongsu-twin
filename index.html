@@ -642,6 +642,21 @@ if (city.street && city.official && city.official.xw) { const ST = city.street, 
   if (O.cam.length) ST.cc = O.cam.map(([x, y]) => { const n = nearWay(x, y); return [x, y, n ? Math.atan2(n.y - y, n.x - x) - Math.PI / 2 : 0]; });   // 실제 카메라 위치(방범 106·주정차 9·신호과속 6), 길 쪽을 봄
   ST.kz = O.sg.map(([x, y]) => { const n = nearWay(x, y); return [x, y, n ? n.ang + Math.PI / 2 : 0]; }); }
 if (city.street && city.street.xw) { const ST = city.street, up = new THREE.Vector3(0, 1, 0);
+  if (city.official && city.official.ar && city.official.ar.length) {   // 노면 방향 화살표(서울시 방향표시 자료 실제 위치·각도·종류 771개)
+    const KIND = { "007": "S", "005": "L", "006": "R", "008": "SL", "009": "SR", "010": "U", "011": "LU", "013": "LR", "014": "SLR", "015": "SU", "001": "Rx", "002": "Sx", "012": "Lx" }, keys = [...new Set(Object.values(KIND))];
+    const cv = document.createElement("canvas"); cv.width = 128 * keys.length; cv.height = 256; const g = cv.getContext("2d"); g.strokeStyle = g.fillStyle = "#fff"; g.lineCap = "butt"; g.lineJoin = "miter";
+    const head = (x, y, a) => { g.save(); g.translate(x, y); g.rotate(a); g.beginPath(); g.moveTo(0, -30); g.lineTo(20, 8); g.lineTo(-20, 8); g.closePath(); g.fill(); g.restore(); };
+    keys.forEach((k, i) => { g.save(); g.translate(i * 128 + 64, 0); g.lineWidth = 13;
+      if (k.includes("S")) { g.beginPath(); g.moveTo(0, 240); g.lineTo(0, 50); g.stroke(); head(0, 46, 0); } else { g.beginPath(); g.moveTo(0, 240); g.lineTo(0, 120); g.stroke(); }
+      if (k.includes("L")) { g.beginPath(); g.moveTo(0, 130); g.quadraticCurveTo(0, 96, -30, 96); g.stroke(); head(-34, 96, -Math.PI / 2); }
+      if (k.includes("R")) { g.beginPath(); g.moveTo(0, 130); g.quadraticCurveTo(0, 96, 30, 96); g.stroke(); head(34, 96, Math.PI / 2); }
+      if (k.includes("U")) { g.beginPath(); g.moveTo(0, 130); g.arc(-22, 110, 22, 0, Math.PI, true); g.lineTo(-44, 150); g.stroke(); head(-44, 156, Math.PI); }
+      if (k.includes("x")) { g.strokeStyle = "#fff"; g.lineWidth = 11; g.beginPath(); g.moveTo(-40, 150); g.lineTo(40, 210); g.moveTo(40, 150); g.lineTo(-40, 210); g.stroke(); }
+      g.restore(); });
+    const tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 8; const mm = new THREE.Matrix4(), q = new THREE.Quaternion(), one = new THREE.Vector3(1, 1, 1);
+    keys.forEach((k, i) => { const list = city.official.ar.filter(a => KIND[a[3]] === k); if (!list.length) return; const geo = new THREE.PlaneGeometry(1.5, 3.0), uv = geo.attributes.uv; for (let n = 0; n < uv.count; n++) uv.setX(n, (i + uv.getX(n)) / keys.length); geo.rotateX(-Math.PI / 2);
+      const im = new THREE.InstancedMesh(geo, new THREE.MeshStandardMaterial({ map: tex, transparent: true, alphaTest: 0.35, roughness: 0.6, polygonOffset: true, polygonOffsetFactor: -4, depthWrite: false }), list.length);
+      list.forEach(([x, y, drn], j) => { q.setFromAxisAngle(up, drn * Math.PI / 180 - Math.PI / 2); mm.compose(V(x, y, 0.11), q, one); im.setMatrixAt(j, mm); }); im.renderOrder = 3; im.receiveShadow = true; scene.add(im); }); }
   if (ST.kz && ST.kz.length) {   // 어린이보호구역 안전표지판(성동구 자료 실제 위치 756곳): 노란 판 기둥 — 표지 종류는 자료에 없어 한 가지 모양
     const cv = document.createElement("canvas"); cv.width = 128; cv.height = 160; const g = cv.getContext("2d"); g.fillStyle = "#f2c21a"; g.fillRect(0, 0, 128, 160); g.strokeStyle = "#111"; g.lineWidth = 6; g.strokeRect(5, 5, 118, 150);
     g.fillStyle = "#111"; g.textAlign = "center"; g.font = '900 30px "Pretendard","Malgun Gothic",sans-serif'; g.fillText("어린이", 64, 58); g.fillText("보호", 64, 96); g.font = '900 36px "Pretendard",sans-serif'; g.fillText("30", 64, 140);
