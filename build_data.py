@@ -12,7 +12,8 @@ random.seed(3)
 els = json.load(open(os.path.join(D, "data", "official_twin.json"), encoding="utf-8"))["elements"]
 LM = json.load(open(os.path.join(D, "data", "landmarks.json"), encoding="utf-8"))
 rm = {i for l in LM for i in l["remove"]}
-els = [e for e in els if e.get("id") not in rm] + [{"id": l["id"], "geometry": l["geometry"], "tags": {
+# 47233_0 = 코오롱타워 저층부에 묻힌 부속동(build_styled 도 뺌)
+els = [e for e in els if e.get("id") not in rm and e.get("id") != "47233_0"] + [{"id": l["id"], "geometry": l["geometry"], "tags": {
     "official_height": l["height"], "official_floors": l["floors"], "use": "업무시설", "structure": "철골철근콘크리트구조",
     "official_addr": l["name"], "lm": l["kind"], "approved": "2022" if l["kind"] != "haus" else "2025"}} for l in LM]
 NAMES = {"45832_0": "서울숲 코오롱디지털타워1차", "47645_0": "대림창고", "44664_0": "대림창고", "47644_0": "대림창고", "45156_0": "대림창고"}

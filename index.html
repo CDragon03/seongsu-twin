@@ -73,6 +73,7 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
 .cr{margin:0;padding:10px 0;border-top:1px solid var(--line)}
 .cr span{font-size:12.5px;min-width:72px}
 .cr select,.cr input[type=date]{background:rgba(255,255,255,.05);border:1px solid var(--line);border-radius:8px;padding:6px 8px}
+select{color-scheme:dark}select option,select optgroup{background:#1d2126;color:#e8eaed}select option:checked{background:#2b6a45;color:#fff}
 input[type=range]{accent-color:var(--line2)}
 .btn2{border-radius:10px;padding:9px 12px;font-size:13px;font-weight:700;background:rgba(255,255,255,.06);border:0}
 .btn2:hover{background:rgba(255,255,255,.1)}
@@ -350,7 +351,7 @@ function buildCity() {
   for (const b of B) {
     if (b.gone) continue;
     const p = b.p, n = p.length / 2, h = Math.max(0.5, b.h * b.hs); col.set(b.tint || b.c);
-    const _dd = Math.hypot(b.cx - DETAIL_C[0], b.cy - DETAIL_C[1]), lmHide = b.o ? EXTRA_OK && !b.useBox && !!(b.parts && b.parts.length) : ((LM_OK && LM_NAMES.has(b.n)) || (!LM_NAMES.has(b.n) && ((DETAIL_OK && _dd < DETAIL_R) || (FAR_OK && _dd >= DETAIL_R)))) && !b.useBox && (LM_NAMES.has(b.n) || !MODEL_LINKED || (b.parts && b.parts.length) || (b.meshes && b.meshes.length));   // 모델이 안 붙은 건물(37동)·OSM으로 채운 건물은 상자로   // 상세 모델이 대신 보임(부서지거나 불타면 단순 상자로 바뀜)   // 블렌더에서 만든 랜드마크 모델이 대신 보임(충돌 벽은 그대로)
+    const _dd = Math.hypot(b.cx - DETAIL_C[0], b.cy - DETAIL_C[1]), lmHide = b.covered ? true : b.o ? EXTRA_OK && !b.useBox && !!(b.parts && b.parts.length) : ((LM_OK && LM_NAMES.has(b.n)) || (!LM_NAMES.has(b.n) && ((DETAIL_OK && _dd < DETAIL_R) || (FAR_OK && _dd >= DETAIL_R)))) && !b.useBox && (LM_NAMES.has(b.n) || !MODEL_LINKED || (b.parts && b.parts.length) || (b.meshes && b.meshes.length));   // 모델이 안 붙은 건물(37동)·OSM으로 채운 건물은 상자로   // 상세 모델이 대신 보임(부서지거나 불타면 단순 상자로 바뀜)   // 블렌더에서 만든 랜드마크 모델이 대신 보임(충돌 벽은 그대로)
     for (let i = 0; i < n; i++) {
       const x1 = p[2 * i], y1 = p[2 * i + 1], x2 = p[(2 * i + 2) % (2 * n)], y2 = p[(2 * i + 3) % (2 * n)];
       const L = Math.hypot(x2 - x1, y2 - y1); if (L < 0.05) continue;
@@ -630,7 +631,9 @@ try { $("load").textContent = "성수동 상세 건물 불러오는 중…(25MB)
       if (TINT[m.name] != null) { const r = m.clone(); r.color.setHex(TINT[m.name]).multiplyScalar(rnd(0.82, 1.08)); r.roughness = 0.9; return r; } return m; });
     if (o.material.length === 1) o.material = o.material[0]; });
   loader.loadAsync("models/city_far.glb").then(f => READY.then(() => f)).then(f => { window.__tintCity(f.scene); f.scene.traverse(o => { if (o.isMesh) o.castShadow = false; }); scene.add(f.scene); window.__far = f.scene; linkMeshes(f.scene); mergeStatic(f.scene); FAR_OK = true; buildCity(); drawBase(); msg("동네 전체 상세 건물을 다 불러왔습니다", 1.5);
-    return loader.loadAsync("models/city_extra.glb").then(x => { window.__tintCity(x.scene); scene.add(x.scene); window.__extra = x.scene; linkMeshes(x.scene, b => b.o); mergeStatic(x.scene); EXTRA_OK = true; buildCity(); }); })   // 공식 자료에 없어 OSM 으로 채운 141동(블렌더 상세 모델).catch(e => console.warn("city_far.glb", e));
+    return loader.loadAsync("models/city_extra.glb").then(x => { window.__tintCity(x.scene); scene.add(x.scene); window.__extra = x.scene; linkMeshes(x.scene, b => b.o); mergeStatic(x.scene); EXTRA_OK = true; buildCity();
+      return loader.loadAsync("models/city_extra2.glb"); }).then(x => { const has = b => (b.parts && b.parts.length) || (b.meshes && b.meshes.length);   // 공식 건물 중 상세 모델이 빠졌던 10동
+      window.__tintCity(x.scene); scene.add(x.scene); linkMeshes(x.scene, b => !b.o && !has(b) && !LM_NAMES.has(b.n)); mergeStatic(x.scene); coverLeftovers(); buildCity(); }); }).catch(e => console.warn("city_far.glb", e));   /* 먼 건물 → OSM 으로 채운 141동 → 모델 빠졌던 공식 10동 순서로 불러옴 */
 } catch (e) { console.warn("city_detail.glb", e); }
 // 사람 = 직접 만든 충돌시험 더미 모양(살구색 비닐 피부 + 검은 관절 부품 + 노랑·검정 원형 표적). 실제 제품 모델을 본뜬 것이 아니라 일반적인 생김새를 도형으로 만든 것
 const TARGET_TEX = (() => { const c = document.createElement("canvas"); c.width = c.height = 128; const g = c.getContext("2d");
@@ -1026,6 +1029,12 @@ const SC = {};
 // 1 좀비
 // 좀비는 가장 가까운 사람(나 또는 시민, 60m 안)을 찾아가 공격, 물린 시민은 2초 뒤 좀비가 됨
 // ══ 시뮬레이션 공통: 건물 ↔ 상세 모델 연결, 칠하기·무너뜨리기, 건물 고르기(클릭), 조작판, 부드러운 연기·불 입자 ══
+function coverLeftovers() {   // 아직 모델 없는 건물이 모델 있는 건물과 겹치면(같은 윤곽이 두 번 들어간 것 등) 상자를 숨김 — 겹친 쪽 모델이 대신 보임
+  const has = b => (b.parts && b.parts.length) || (b.meshes && b.meshes.length), inP = (p, x, y) => { let c = false; for (let i = 0, j = p.length - 2; i < p.length; j = i, i += 2) if ((p[i + 1] > y) !== (p[j + 1] > y) && x < p[i] + (y - p[i + 1]) * (p[j] - p[i]) / (p[j + 1] - p[i + 1])) c = !c; return c; };
+  let n = 0; for (const b of B) { if (has(b) || LM_NAMES.has(b.n)) continue;
+    for (const q of B) { if (q === b || !has(q) || Math.hypot(q.cx - b.cx, q.cy - b.cy) > 80) continue; let k = 0; for (let i = 0; i < b.p.length; i += 2) if (inP(q.p, b.p[i], b.p[i + 1])) k++;
+      if (inP(q.p, b.cx, b.cy) || k >= b.p.length / 4) { b.covered = true; n++; break; } } }
+  window.__covered = n; }
 function bAt(x, y, f) {
   for (const b of BGRID.get(key(Math.floor(x / 20), Math.floor(y / 20))) || []) { if (f && !f(b)) continue; const p = b.p; let c = false;
     for (let i = 0, j = p.length - 2; i < p.length; j = i, i += 2) if ((p[i + 1] > y) !== (p[j + 1] > y) && x < p[i] + (y - p[i + 1]) * (p[j] - p[i]) / (p[j + 1] - p[i + 1])) c = !c;
