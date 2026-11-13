@@ -1097,7 +1097,7 @@ function updateSound(dt) {
   let sir = 0; if (ms === SC.war) sir = 0.06; if (ms === SC.chase && SC.chase.alarm > 0) sir = 0.08; if (ms === SC.fire && SC.fire.truck) sir = Math.max(sir, distGain(SC.fire.truck.position.x, -SC.fire.truck.position.z, 150) * 0.08);
   loopSet("siren", sir, oscLoop(700, "triangle"));
   if (SND.loops.siren) SND.loops.siren.o.frequency.setTargetAtTime(650 + 250 * Math.sin(performance.now() / 1000 * 3), SND.ctx.currentTime, 0.05);
-  let tr = 0; for (const t of TRAINS) tr = Math.max(tr, distGain(t.g.position.x, -t.g.position.z, 160) * 0.18);
+  let tr = 0; for (const t of TRAINS) tr = Math.max(tr, distGain(t.cx ?? 0, t.cy ?? 0, 160) * 0.18);
   loopSet("train", tr, noiseLoop(220, "lowpass", 1.2));
   let uf = 0; if (ms === SC.kaiju && SC.kaiju.ufo) for (const u of SC.kaiju.ufo) if (!u.dead) uf = Math.max(uf, distGain(u.x, u.y, 120) * 0.06);
   loopSet("ufo", uf, oscLoop(140, "sine"));
@@ -1120,7 +1120,7 @@ function makeTrain() {   // 서울 2호선 전동차를 본뜬 단순 모델(직
   const g = new THREE.Group(), body = new THREE.MeshStandardMaterial({ color: 0xc9ccd0, metalness: 0.55, roughness: 0.35 }), win = new THREE.MeshStandardMaterial({ color: 0x1d262d, metalness: 0.4, roughness: 0.15 }),
     green = new THREE.MeshStandardMaterial({ color: 0x00a84d, roughness: 0.5 }), dark = new THREE.MeshStandardMaterial({ color: 0x2b2d30, roughness: 0.8 });
   const CL = 19.5, N = 10;
-  for (let k = 0; k < N; k++) { const z = (k - (N - 1) / 2) * (CL + 0.6), car = new THREE.Group(); car.position.z = z; g.add(car);
+  for (let k = 0; k < N; k++) { const z = (k - (N - 1) / 2) * (CL + 0.6), car = new THREE.Group(); car.position.z = z; car.userData.z = z; g.add(car);
     const add = (w, h, d, m, x, y, zz) => { const o = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m); o.position.set(x, y, zz); o.castShadow = true; car.add(o); };
     add(3.1, 3.2, CL, body, 0, 2.0, 0); add(3.14, 0.85, CL - 1.2, win, 0, 2.55, 0); add(3.15, 0.22, CL, green, 0, 1.72, 0); add(2.6, 0.35, CL - 2, dark, 0, 0.25, 0);
     for (const dz of [-6.5, -2.2, 2.2, 6.5]) add(3.16, 2.0, 1.3, body, 0, 1.6, dz);   // 출입문
@@ -1150,6 +1150,11 @@ const TRAINS = [];
           if (da < 0.5 && (!best || da < best.da)) best = { v, seg, w, da }; } }
       if (!best) break; VV = best.w === "tail" ? VV.concat(best.seg.slice(2)) : best.seg.slice(0, -2).concat(VV); used.add(best.v); } }
   const P = []; for (let i = 0; i < VV.length; i += 2) if (VV[i] > MX0 - 250 && VV[i] < MX1 + 250 && VV[i + 1] > MY0 - 250 && VV[i + 1] < MY1 + 250) P.push({ x: VV[i], y: VV[i + 1] });
+  if (P.length > 3) {   // 선로 중심선 다듬기: 8m 간격으로 다시 찍고 이웃 평균(이어 붙인 자리의 꺾임을 펴 줌 — 열차가 지그재그로 꺾이던 것)
+    const c0 = [0]; for (let i = 1; i < P.length; i++) c0.push(c0[i - 1] + Math.hypot(P[i].x - P[i - 1].x, P[i].y - P[i - 1].y)); const T0 = c0[c0.length - 1], R = []; let k = 1;
+    for (let d = 0; d <= T0; d += 8) { while (k < c0.length - 1 && c0[k] < d) k++; const t = (d - c0[k - 1]) / ((c0[k] - c0[k - 1]) || 1); R.push({ x: P[k - 1].x + (P[k].x - P[k - 1].x) * t, y: P[k - 1].y + (P[k].y - P[k - 1].y) * t }); }
+    for (let pass = 0; pass < 4; pass++) { const Q = R.map(p => ({ ...p })); for (let i = 1; i < R.length - 1; i++) { let sx = 0, sy = 0, n = 0; for (let j = Math.max(0, i - 5); j <= Math.min(R.length - 1, i + 5); j++) { sx += Q[j].x; sy += Q[j].y; n++; } R[i].x = sx / n; R[i].y = sy / n; } }
+    P.length = 0; P.push(...R); }
   const S_ = [0]; for (let i = 1; i < P.length; i++) S_.push(S_[i - 1] + Math.hypot(P[i].x - P[i - 1].x, P[i].y - P[i - 1].y));
   const L = S_[S_.length - 1];
   const at = d => { d = Math.max(0, Math.min(L, d)); let i = 1; while (i < S_.length - 1 && S_[i] < d) i++; const t = (d - S_[i - 1]) / ((S_[i] - S_[i - 1]) || 1);
@@ -1162,6 +1167,16 @@ const TRAINS = [];
     const q = at(best), nn = nrm(best); return { s: best, o: (mx - q.x) * nn.x + (my - q.y) * nn.y, ok: bd < 40 }; }).filter(o => o.ok && o.s > 95 && o.s < L - 95).sort((a, b) => a.s - b.s);
   const stops = ST.map(o => o.s), corr = d => { if (!ST.length) return 0; if (d <= ST[0].s) return ST[0].o; for (let i = 1; i < ST.length; i++) if (d <= ST[i].s) { const f = (d - ST[i - 1].s) / (ST[i].s - ST[i - 1].s); return ST[i - 1].o + (ST[i].o - ST[i - 1].o) * f; } return ST[ST.length - 1].o; };
   window.__trainST = ST;
+  if (L > 200) {   // 철길: 열차가 다니는 두 선로마다 자갈 바닥 + 침목 + 레일 2줄(표준궤 1.435m)
+    const bal = [], rail = [], slp = [], up = new THREE.Vector3(0, 1, 0), Z0 = 8.46;
+    const strip = (arr, d0, d1, side, off, w, z) => { const P4 = [[d0, -w / 2], [d1, -w / 2], [d1, w / 2], [d0, w / 2]].map(([d, o]) => { const c = at(d), n = nrm(d), sd = side + corr(d) + off + o; return [c.x + n.x * sd, c.y + n.y * sd]; });
+      for (const k of [0, 1, 2, 0, 2, 3]) arr.push(P4[k][0], z, -P4[k][1]); };
+    for (const side of [1.9, -1.9]) for (let d = 30; d < L - 30; d += 5) { strip(bal, d, d + 5, side, 0, 2.9, Z0); for (const g of [-0.7175, 0.7175]) strip(rail, d, d + 5, side, g, 0.07, Z0 + 0.16);
+      for (let q = d; q < d + 5; q += 0.65) { const c = at(q), n = nrm(q), sd = side + corr(q); slp.push([c.x + n.x * sd, c.y + n.y * sd, Math.atan2(n.y, n.x)]); } }
+    for (const [arr, mat] of [[bal, new THREE.MeshStandardMaterial({ color: 0x5c5a56, roughness: 1, side: THREE.DoubleSide })], [rail, new THREE.MeshStandardMaterial({ color: 0x8e9499, metalness: 0.85, roughness: 0.3, side: THREE.DoubleSide })]]) {
+      const g = new THREE.BufferGeometry(); g.setAttribute("position", new THREE.Float32BufferAttribute(arr, 3)); g.computeVertexNormals(); const m = new THREE.Mesh(g, mat); m.receiveShadow = true; scene.add(m); }
+    const im = new THREE.InstancedMesh(new THREE.BoxGeometry(2.4, 0.12, 0.24), new THREE.MeshStandardMaterial({ color: 0x8b8880, roughness: 0.9 }), slp.length), mm = new THREE.Matrix4(), q = new THREE.Quaternion(), one = new THREE.Vector3(1, 1, 1);
+    slp.forEach(([x, y, a], i) => { q.setFromAxisAngle(up, a); mm.compose(V(x, y, Z0 + 0.07), q, one); im.setMatrixAt(i, mm); }); im.receiveShadow = true; im.frustumCulled = false; scene.add(im); }
   if (L > 200) for (const [d0, dir, side] of [[L * 0.25, 1, 1.9], [L * 0.75, -1, -1.9]]) {
     const g = makeTrain(); scene.add(g); TRAINS.push({ g, d: d0, dir, side, v: 16, at, L, stops, corr, wait: 0, last: null }); } }
 function updateTrains(dt) {
@@ -1169,8 +1184,9 @@ function updateTrains(dt) {
     if (t.wait > 0) t.wait -= dt;   // 역에 정차(25초)
     else { const d0 = t.d; t.d += t.dir * t.v * dt; if (t.d > t.L - 90) { t.d = t.L - 90; t.dir = -1; t.last = null; } if (t.d < 90) { t.d = 90; t.dir = 1; t.last = null; }
       for (const s of t.stops || []) if (s !== t.last && (d0 - s) * (t.d - s) <= 0) { t.d = s; t.wait = 25; t.last = s; break; } }
-    const c = t.at(t.d), a = t.at(t.d - 40), b = t.at(t.d + 40), h = Math.atan2(-(b.x - a.x), b.y - a.y), nx = Math.cos(h), ny = Math.sin(h);
-    const sd = t.side + (t.corr ? t.corr(t.d) : 0); t.g.position.copy(V(c.x + nx * sd, c.y + ny * sd, 8.55)); t.g.rotation.y = h + (t.dir > 0 ? Math.PI : 0);
+    t.g.position.set(0, 0, 0); t.g.rotation.set(0, 0, 0); { const c0 = t.at(t.d); t.cx = c0.x; t.cy = c0.y; }   // 칸마다 선로를 따라 놓음(10량을 한 덩어리로 돌리면 굽은 고가에서 사선으로 걸침)
+    for (const car of t.g.children) { if (car.userData.z == null) continue; const dk = t.d + (t.dir > 0 ? 1 : -1) * car.userData.z, c = t.at(dk), a = t.at(dk - 9), b = t.at(dk + 9), h = Math.atan2(-(b.x - a.x), b.y - a.y), nx = Math.cos(h), ny = Math.sin(h);
+      const sd = t.side + (t.corr ? t.corr(dk) : 0); car.position.copy(V(c.x + nx * sd, c.y + ny * sd, 8.55)); car.rotation.y = h + (t.dir > 0 ? Math.PI : 0); }
   }
 }
 // ══ 시나리오 ══
