@@ -47,6 +47,42 @@ for e in els:
     u = t.get("use", "")
     if "근린생활" in u or "판매" in u: b["u"] = 1   # 1층 상가(간판 표현용)
     B.append(b)
+# 공식 자료에 없는 건물을 OSM 윤곽으로 채움(학교·아파트 등 147동, 2026-11-13). 높이 = OSM 층수×3.3m, 없으면 3층 추정. b["o"]=1 표시
+def _inside(p, x, y):
+    c = False; n = len(p) // 2
+    for i in range(n):
+        j = (i - 1) % n; xi, yi, xj, yj = p[2*i], p[2*i+1], p[2*j], p[2*j+1]
+        if (yi > y) != (yj > y) and x < xi + (y - yi) * (xj - xi) / (yj - yi): c = not c
+    return c
+_grid = {}
+for _i, _b in enumerate(B):
+    _xs, _ys = _b["p"][0::2], _b["p"][1::2]
+    for gx in range(int(min(_xs) // 20), int(max(_xs) // 20) + 1):
+        for gy in range(int(min(_ys) // 20), int(max(_ys) // 20) + 1): _grid.setdefault((gx, gy), []).append(_i)
+_cov = lambda x, y: any(_inside(B[i]["p"], x, y) for i in _grid.get((int(x // 20), int(y // 20)), []))
+_X0, _X1 = min(v for b in B for v in b["p"][0::2]), max(v for b in B for v in b["p"][0::2]); _Y0, _Y1 = min(v for b in B for v in b["p"][1::2]), max(v for b in B for v in b["p"][1::2])
+_add = 0
+for e in json.load(open(os.path.join(D, "data", "osm.json"), encoding="utf-8"))["elements"]:
+    t = e.get("tags", {})
+    if "building" not in t or "geometry" not in e or t.get("building") == "train_station": continue
+    P = [xy(q["lat"], q["lon"]) for q in e["geometry"]]
+    if P[0] == P[-1]: P = P[:-1]
+    if len(P) < 3: continue
+    n = len(P); cx = sum(q[0] for q in P) / n; cy = sum(q[1] for q in P) / n
+    if not (_X0 < cx < _X1 and _Y0 < cy < _Y1): continue
+    a2 = sum(P[i][0] * P[(i + 1) % n][1] - P[(i + 1) % n][0] * P[i][1] for i in range(n))
+    if abs(a2) / 2 < 80: continue
+    pts = P + [(cx, cy)]
+    if sum(1 for x, y in pts if not _cov(x, y)) <= len(pts) * 0.7: continue
+    if a2 < 0: P = P[::-1]
+    try: fl = int(float(str(t.get("building:levels", "")).split(";")[0]))
+    except ValueError: fl = 0
+    h = round(fl * 3.3, 1) if fl else 9.9; fl = fl or 3; bt = t.get("building")
+    k = "apt" if bt == "apartments" and fl >= 8 else "plaster" if bt in ("apartments", "house", "residential") else "metal" if bt in ("industrial", "warehouse") else "glass" if fl >= 12 else "concrete"
+    nb = {"p": [r2(v) for q in P for v in q], "h": h, "f": fl, "c": random.choice(PAL[k]), "k": k, "y": 0, "o": 1}
+    if t.get("name"): nb["n"] = t["name"]
+    B.append(nb); _add += 1
+print("OSM 로 채운 건물", _add)
 # 도로 띠(폭 = road_widths.json, 보도 포함) → 삼각형
 RW = json.load(open(os.path.join(D, "data", "road_widths.json")))
 dflt = {"primary": 14, "secondary": 12, "tertiary": 10, "residential": 7, "unclassified": 6, "service": 4, "footway": 2, "pedestrian": 4}
@@ -103,6 +139,6 @@ for e in OS:
     exits2.append({"ref": e["tags"].get("ref", ""), "st": st["name"], "x": r2(x), "y": r2(y), "ang": round(ang, 3)})
 out = {"stations": stations, "exits2": exits2, "buildings": B, "roads": R, "alleys": [r2(v) for t_ in AL for v in t_], "ways": W_,
        "ground": {"img": "ground.jpg", "corners": GR["corners"]}, "exits": EX, "viaduct": V,
-       "start": [r2(CX), r2(CY)], "source": "건물: 국토교통부 GIS건물통합정보 · 도로: OpenStreetMap · 바닥: 국토지리정보원 정사영상 2025"}
+       "start": [r2(CX), r2(CY)], "source": "건물: 국토교통부 GIS건물통합정보(빠진 147동은 OpenStreetMap 윤곽·높이 추정) · 도로: OpenStreetMap · 바닥: 국토지리정보원 정사영상 2025"}
 json.dump(out, open(os.path.join(G, "city.json"), "w", encoding="utf-8"), ensure_ascii=False, separators=(",", ":"))
 print("건물", len(B), "도로 삼각형", len(R) // 6, "골목", len(AL), "길", len(W_), round(os.path.getsize(os.path.join(G, "city.json")) / 1e6, 1), "MB")
