@@ -457,6 +457,9 @@ function los(a, b) {   // 시야(건물 벽에 막히는지)
 
 // ══ 거리 꾸미기(표현용): 차선 · 가로수 · 주차·주행 차량 — 위치는 도로 폭에서 계산한 것이며 실측 아님 ══
 const MAJOR = city.ways.filter(w => w.w >= 4 && w.p.length >= 4);
+const VIA_SEG = []; for (const v of city.viaduct) for (let i = 0; i + 3 < v.length; i += 2) VIA_SEG.push([v[i], v[i + 1], v[i + 2], v[i + 3]]);
+const nearVia = (x, y, r = 11) => VIA_SEG.some(([x1, y1, x2, y2]) => { if (Math.min(x1, x2) - r > x || Math.max(x1, x2) + r < x || Math.min(y1, y2) - r > y || Math.max(y1, y2) + r < y) return false;
+  const vx = x2 - x1, vy = y2 - y1, l = vx * vx + vy * vy || 1e-9, t = Math.max(0, Math.min(1, ((x - x1) * vx + (y - y1) * vy) / l)); return Math.hypot(x - x1 - vx * t, y - y1 - vy * t) < r; });   // 2호선 고가 밑
 function wayLen(p) { const L = [0]; for (let i = 2; i < p.length; i += 2) L.push(L[L.length - 1] + Math.hypot(p[i] - p[i - 2], p[i + 1] - p[i - 1])); return L; }
 function wayAt(p, L, s, off) {   // 길이 s 지점, 진행 방향 오른쪽으로 off(m)
   let i = 1; while (i < L.length - 1 && L[i] < s) i++; const t = (s - L[i - 1]) / Math.max(1e-6, L[i] - L[i - 1]);
@@ -476,7 +479,7 @@ function wayAt(p, L, s, off) {   // 길이 s 지점, 진행 방향 오른쪽으�
 const TREE_POS = [];
 for (const w of MAJOR) { const L = wayLen(w.p), T = L[L.length - 1];
   for (const side of [-1, 1]) for (let s = 10 + Math.random() * 4; s < T - 10; s += 9 + Math.random() * 3) { const q = wayAt(w.p, L, s, side * (w.w + 1.3));
-    if (inBuilding(q.x, q.y)) continue; const t = { x: q.x, y: q.y }; if (collide(t, 1.6)) continue; TREE_POS.push(q); } }
+    if (inBuilding(q.x, q.y) || nearVia(q.x, q.y)) continue; const t = { x: q.x, y: q.y }; if (collide(t, 1.6)) continue; TREE_POS.push(q); } }
 { const trunk = new THREE.CylinderGeometry(0.14, 0.2, 3.2, 14); trunk.translate(0, 1.6, 0);
   const parts = []; for (const [x, y, z, r] of [[0, 4.6, 0, 1.9], [0.8, 4.1, 0.3, 1.3], [-0.7, 4.3, -0.4, 1.4], [0.1, 5.6, 0.2, 1.3]]) { const s = mergeVertices(new THREE.IcosahedronGeometry(r, 4)); s.translate(x, y, z); parts.push(s); }
   const crown = mergeGeometries(parts); const pa = crown.attributes.position; for (let i = 0; i < pa.count; i++) { const k = 1 + (Math.sin(pa.getX(i) * 7.1 + pa.getZ(i) * 5.3) * 0.12); pa.setXYZ(i, pa.getX(i) * k, pa.getY(i) * (0.9 + 0.1 * k), pa.getZ(i) * k); } crown.computeVertexNormals();
@@ -564,7 +567,7 @@ const SIGN_TEX = (() => { const cv = document.createElement("canvas"); cv.width 
     for (const [y, w] of [[9.3, 1.8], [8.6, 1.4]]) { const c = new THREE.BoxGeometry(w, 0.1, 0.1); c.translate(0, y, 0); P.push(c.toNonIndexed()); }
     const tr = new THREE.CylinderGeometry(0.28, 0.28, 0.9, 10); tr.translate(0.35, 7.4, 0); P.push(tr.toNonIndexed()); return mergeGeometries(P.map(p => { p.deleteAttribute("uv"); return p; })); })();
   const lamps = [], poles = [], wires = [];
-  for (const w of MAJOR) { const L = wayLen(w.p), T = L[L.length - 1]; for (const side of [-1, 1]) for (let s = 12; s < T - 8; s += 30) { const q = wayAt(w.p, L, s, side * (w.w + 0.45)); if (inBuilding(q.x, q.y)) continue; lamps.push({ ...q, h: q.h + (side > 0 ? Math.PI / 2 : -Math.PI / 2) }); } }
+  for (const w of MAJOR) { const L = wayLen(w.p), T = L[L.length - 1]; for (const side of [-1, 1]) for (let s = 12; s < T - 8; s += 30) { const q = wayAt(w.p, L, s, side * (w.w + 0.45)); if (inBuilding(q.x, q.y) || nearVia(q.x, q.y, 6)) continue; lamps.push({ ...q, h: q.h + (side > 0 ? Math.PI / 2 : -Math.PI / 2) }); } }
   for (const w of city.ways) { if (w.w >= 4 || w.p.length < 4) continue; const L = wayLen(w.p), T = L[L.length - 1]; if (T < 25) continue; let prev = null;
     for (let s = 6; s < T - 4; s += 26 + Math.random() * 6) { const q = wayAt(w.p, L, s, w.w + 0.15); const t = { x: q.x, y: q.y }; if (inBuilding(q.x, q.y)) { prev = null; continue; } collide(t, 0.25); const pp = { x: t.x, y: t.y, h: q.h }; poles.push(pp);
       if (prev && Math.hypot(prev.x - pp.x, prev.y - pp.y) < 40) for (const [hz, off] of [[9.3, 0.8], [9.3, -0.8], [8.6, 0.6], [8.6, -0.6]]) {
@@ -983,22 +986,38 @@ const TRAINS = [];
 { // 성수역(출구 평균)을 지나는 고가 선을 고르고, 모델 범위(지도 안) 부분만 씀
   const ex = city.exits.reduce((o, e) => ({ x: o.x + e.x / city.exits.length, y: o.y + e.y / city.exits.length }), { x: 0, y: 0 });
   const VS = city.viaduct.map(v => { let m = 1e9; for (let i = 0; i < v.length; i += 2) m = Math.min(m, Math.hypot(v[i] - ex.x, v[i + 1] - ex.y)); return [m, v]; }).sort((a, b) => a[0] - b[0]);
-  const VV = VS.length ? VS[0][1] : VIA;
+  let VV = VS.length ? VS[0][1].slice() : VIA.slice();
+  { // 끝이 맞닿고 방향이 비슷한 고가 선들을 이어 붙여 뚝섬역까지 한 줄로(같은 선로 쪽만)
+    const used = new Set([VS.length ? VS[0][1] : VIA]), dirOf = (P, i, j) => Math.atan2(P[j + 1] - P[i + 1], P[j] - P[i]);
+    for (let it = 0; it < 30; it++) { let best = null;   // 끝이 맞닿는 후보 중 방향이 가장 곧게 이어지는 선(갈림길에서 지선으로 새지 않게)
+      for (const v of city.viaduct) { if (used.has(v) || v.length < 4) continue; const n = VV.length, m = v.length;
+        for (const [ex, ey, w] of [[VV[n - 2], VV[n - 1], "tail"], [VV[0], VV[1], "head"]]) { const dS = Math.hypot(v[0] - ex, v[1] - ey), dE = Math.hypot(v[m - 2] - ex, v[m - 1] - ey); if (Math.min(dS, dE) > 12) continue;
+          let seg = v.slice(); if ((w === "tail" && dE < dS) || (w === "head" && dS < dE)) { const r = []; for (let i = seg.length - 2; i >= 0; i -= 2) r.push(seg[i], seg[i + 1]); seg = r; }
+          const a1 = w === "tail" ? dirOf(VV, n - 4, n - 2) : dirOf(VV, 0, 2), a2 = w === "tail" ? dirOf(seg, 0, 2) : dirOf(seg, seg.length - 4, seg.length - 2), da = Math.abs(Math.atan2(Math.sin(a1 - a2), Math.cos(a1 - a2)));
+          if (da < 0.5 && (!best || da < best.da)) best = { v, seg, w, da }; } }
+      if (!best) break; VV = best.w === "tail" ? VV.concat(best.seg.slice(2)) : best.seg.slice(0, -2).concat(VV); used.add(best.v); } }
   const P = []; for (let i = 0; i < VV.length; i += 2) if (VV[i] > MX0 - 250 && VV[i] < MX1 + 250 && VV[i + 1] > MY0 - 250 && VV[i + 1] < MY1 + 250) P.push({ x: VV[i], y: VV[i + 1] });
   const S_ = [0]; for (let i = 1; i < P.length; i++) S_.push(S_[i - 1] + Math.hypot(P[i].x - P[i - 1].x, P[i].y - P[i - 1].y));
   const L = S_[S_.length - 1];
   const at = d => { d = Math.max(0, Math.min(L, d)); let i = 1; while (i < S_.length - 1 && S_[i] < d) i++; const t = (d - S_[i - 1]) / ((S_[i] - S_[i - 1]) || 1);
     return { x: P[i - 1].x + (P[i].x - P[i - 1].x) * t, y: P[i - 1].y + (P[i].y - P[i - 1].y) * t, h: Math.atan2(-(P[i].x - P[i - 1].x), P[i].y - P[i - 1].y) }; };
-  const stops = (city.stations || []).filter(s => s.line === "2호선").map(st => { let best = 0, bd = 1e9; for (let d = 0; d <= L; d += 2) { const q = at(d), dd = Math.hypot(q.x - st.x, q.y - st.y); if (dd < bd) { bd = dd; best = d; } } return bd < 80 ? best : null; }).filter(v => v != null && v > 95 && v < L - 95);
-  if (L > 200) for (const [d0, dir, side] of [[L * 0.25, 1, 1.4], [L * 0.75, -1, -1.4]]) {
-    const g = makeTrain(); scene.add(g); TRAINS.push({ g, d: d0, dir, side, v: 16, at, L, stops, wait: 0, last: null }); } }
+  // 정차 위치·선로 보정: 승강장 2개의 가운데(본선 두 선로가 지나는 곳)를 기준으로(역 점 좌표는 승강장과 100m 떨어진 경우가 있어 안 씀)
+  const nrm = d => { const a = at(d - 20), b = at(d + 20), h = Math.atan2(-(b.x - a.x), b.y - a.y); return { x: Math.cos(h), y: Math.sin(h) }; };
+  const ST = (city.stations || []).filter(s => s.line === "2호선" && (s.platforms || []).length >= 2).map(st => {
+    let mx = 0, my = 0, n = 0; for (const pf of st.platforms) for (let i = 0; i < pf.length; i += 2) { mx += pf[i]; my += pf[i + 1]; n++; } mx /= n; my /= n;
+    let best = 0, bd = 1e9; for (let d = 0; d <= L; d += 1) { const q = at(d), dd = Math.hypot(q.x - mx, q.y - my); if (dd < bd) { bd = dd; best = d; } }
+    const q = at(best), nn = nrm(best); return { s: best, o: (mx - q.x) * nn.x + (my - q.y) * nn.y, ok: bd < 40 }; }).filter(o => o.ok && o.s > 95 && o.s < L - 95).sort((a, b) => a.s - b.s);
+  const stops = ST.map(o => o.s), corr = d => { if (!ST.length) return 0; if (d <= ST[0].s) return ST[0].o; for (let i = 1; i < ST.length; i++) if (d <= ST[i].s) { const f = (d - ST[i - 1].s) / (ST[i].s - ST[i - 1].s); return ST[i - 1].o + (ST[i].o - ST[i - 1].o) * f; } return ST[ST.length - 1].o; };
+  window.__trainST = ST;
+  if (L > 200) for (const [d0, dir, side] of [[L * 0.25, 1, 1.9], [L * 0.75, -1, -1.9]]) {
+    const g = makeTrain(); scene.add(g); TRAINS.push({ g, d: d0, dir, side, v: 16, at, L, stops, corr, wait: 0, last: null }); } }
 function updateTrains(dt) {
   for (const t of TRAINS) {
     if (t.wait > 0) t.wait -= dt;   // 역에 정차(25초)
     else { const d0 = t.d; t.d += t.dir * t.v * dt; if (t.d > t.L - 90) { t.d = t.L - 90; t.dir = -1; t.last = null; } if (t.d < 90) { t.d = 90; t.dir = 1; t.last = null; }
       for (const s of t.stops || []) if (s !== t.last && (d0 - s) * (t.d - s) <= 0) { t.d = s; t.wait = 25; t.last = s; break; } }
     const c = t.at(t.d), a = t.at(t.d - 40), b = t.at(t.d + 40), h = Math.atan2(-(b.x - a.x), b.y - a.y), nx = Math.cos(h), ny = Math.sin(h);
-    t.g.position.copy(V(c.x + nx * t.side, c.y + ny * t.side, 8.55)); t.g.rotation.y = h + (t.dir > 0 ? Math.PI : 0);
+    const sd = t.side + (t.corr ? t.corr(t.d) : 0); t.g.position.copy(V(c.x + nx * sd, c.y + ny * sd, 8.55)); t.g.rotation.y = h + (t.dir > 0 ? Math.PI : 0);
   }
 }
 // ══ 시나리오 ══
