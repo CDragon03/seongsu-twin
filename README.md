@@ -30,4 +30,5 @@
 - 도로 질감: ambientCG Road012A(CC0) · 하늘 조명: Poly Haven wide_street_01(CC0)
 - 사람·차량 10종·2호선 객차·가로수 2종: Higgsfield(Meshy 6 문자→3D)로 생성, 로고 없음
 - 역·출구: © OpenStreetMap 기여자(성수·뚝섬·서울숲)
+- 지금 날씨: MET Norway(노르웨이 기상청) 예보 API(CC BY 4.0)
 - 그래프: Chart.js(MIT) · 3D: three.js(MIT)

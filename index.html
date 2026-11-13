@@ -59,7 +59,7 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
 #route li span{font-size:12.5px;color:var(--muted);white-space:nowrap;cursor:pointer}
 #route li.now button{width:34px;height:34px;margin-top:-6px;border-width:6px;box-shadow:0 0 0 5px var(--line2-soft)}
 #route li.now span{color:var(--text);font-weight:700;font-size:13.5px}
-#env{flex:none}
+#env{flex:none;display:flex;align-items:center;gap:10px}#nowWx{font-size:12.5px;color:var(--muted);white-space:nowrap}#nowWx:empty{display:none}#nowBtn{font:inherit;font-size:12.5px;border:1px solid var(--line2);background:var(--line2-soft);color:var(--text);border-radius:8px;padding:5px 10px;cursor:pointer}
 #wx{position:static!important;transform:none!important;left:auto!important;top:auto!important;display:flex;gap:10px;align-items:center;padding:0;background:none;border:0;backdrop-filter:none}
 #wx span,#wx i{display:none}
 #wx .grp{display:flex;background:rgba(255,255,255,.05);border-radius:9px;padding:3px}
@@ -109,6 +109,7 @@ input[type=range]{accent-color:var(--line2)}
 /* 좁은 화면 */
 @media (max-width:1100px){#views{display:none}#top{flex-wrap:wrap;gap:8px 14px}#brand{order:1}#env{order:2;margin-left:auto}#route{order:3;flex-basis:100%}#ctrl{width:270px;top:160px;max-height:calc(100vh - 250px)}#out{width:290px;top:160px;max-height:calc(100vh - 250px)}#time{left:16px;right:16px}}
 @media (max-width:760px){
+  #nowWx{display:none}
   #top{left:8px;right:8px;top:8px;flex-wrap:wrap;gap:8px 12px;padding:10px 12px}
   #brand{order:1}#env{order:2;margin-left:auto}#route{order:3;flex-basis:100%}#brand span{display:none}
   #wx button{padding:5px 7px}
@@ -134,7 +135,7 @@ input[type=range]{accent-color:var(--line2)}
 </div>
 <div id="weap" class="hud" style="display:none"></div>
 <div id="ctrl" class="hud" style="display:none"></div>
-<header id="top" class="hud"><div id="brand"><b>성수 디지털트윈</b><span>연무장길 일대, 공공데이터 기반</span></div><div id="views"></div><nav id="route" aria-label="시뮬레이션 고르기"><ol id="routeList"></ol></nav><div id="env"></div></header>
+<header id="top" class="hud"><div id="brand"><b>성수 디지털트윈</b><span>연무장길 일대, 공공데이터 기반</span></div><div id="views"></div><nav id="route" aria-label="시뮬레이션 고르기"><ol id="routeList"></ol></nav><div id="env"><button id="nowBtn" title="지금 성수동 날씨·시간·계절로 맞춤">지금 날씨</button><span id="nowWx"></span></div></header>
 <aside id="out" class="hud" aria-label="결과"><div id="kpis"></div><div id="rows"></div><div id="outCharts"></div><div id="tools"></div></aside>
 <footer id="time" class="hud"><button id="play" aria-label="일시정지">❚❚</button><div id="clock">0:00</div><div id="spd" role="group" aria-label="빠르기"><button data-k="1" class="on">1배</button><button data-k="2">2배</button><button data-k="4">4배</button></div><button id="outBtn" class="ico">결과</button></footer>
 <div id="panoBox" class="hud" style="display:none"></div>
@@ -199,8 +200,8 @@ function treeColors() { if (window.__treesGLB) return; const ic = window.__trees
   if (ic.instanceColor) ic.instanceColor.needsUpdate = true; }
 function applyEnv() { snowify(scene); const se = SEASON[ENV.season], w = ENV.weather;
   const sp = sunPos(new Date(2026, se.date[0], se.date[1]), 14); SUN_DIR = new THREE.Vector3(Math.sin(sp.az) * Math.cos(sp.alt), Math.max(0.08, Math.sin(sp.alt)), -Math.cos(sp.az) * Math.cos(sp.alt));
-  const sky = w === "rain" ? 0x8e979f : w === "snow" ? 0xc3cad1 : se.sky;
-  setMood(sky, w === "clear" ? 650 : w === "rain" ? 380 : 320, w === "clear" ? se.hemi : 0.42, w === "clear" ? se.sun : w === "rain" ? 0.7 : 1.0);
+  const oc = w === "clear" && ENV.overcast, sky = w === "rain" ? 0x8e979f : w === "snow" ? 0xc3cad1 : oc ? 0xb4bac0 : se.sky;   // oc: 흐림(지금 날씨에서만)
+  setMood(sky, w === "clear" ? (oc ? 520 : 650) : w === "rain" ? 380 : 320, w === "clear" ? (oc ? 0.34 : se.hemi) : 0.42, w === "clear" ? (oc ? 1.3 : se.sun) : w === "rain" ? 0.7 : 1.0);
   timeEnv();
   if (window.__sky && window.__sky.material.uniforms) { const u = window.__sky.material.uniforms; for (const k of Object.keys(u)) if (u[k].value && u[k].value.isColor) u[k].value.lerp(new THREE.Color(sky), 0.0); }
   SNOW_U.value = ENV.season === "winter" ? Math.max(ENV.snow, 0.75) : ENV.snow; treeColors(); if (window.__treesGLB) seasonTrees();
@@ -268,7 +269,7 @@ function timeEnv() {   // applyEnv 안에서 부름: 해·하늘·빛을 시간�
 { const d = document.createElement("div"); d.id = "wx";
   d.innerHTML = `<span>계절</span>${Object.entries(SEASON).map(([k, v]) => `<button data-s="${k}">${v.ko}</button>`).join("")}<i></i><span>날씨</span><button data-w="clear">맑음</button><button data-w="rain">비</button><button data-w="snow">눈</button><i></i><span>시간</span><button data-t="day">낮</button><button data-t="dusk">저녁</button><button data-t="night">밤</button>`;
   document.body.appendChild(d);
-  d.onclick = e => { const b = e.target.closest("button"); if (!b) return; if (b.dataset.s) { ENV.season = b.dataset.s; if (ENV.season !== "winter" && ENV.weather !== "snow") ENV.snow = 0; } if (b.dataset.w) ENV.weather = b.dataset.w; if (b.dataset.t) ENV.time = b.dataset.t; applyEnv(); };
+  d.onclick = e => { const b = e.target.closest("button"); if (!b) return; if (b.dataset.s) { ENV.season = b.dataset.s; if (ENV.season !== "winter" && ENV.weather !== "snow") ENV.snow = 0; } if (b.dataset.w) { ENV.weather = b.dataset.w; ENV.overcast = false; } if (b.dataset.t) ENV.time = b.dataset.t; applyEnv(); };
   const st = document.createElement("style"); st.textContent = "#wx{left:50%;top:58px;transform:translateX(-50%);display:flex;align-items:center;gap:6px;padding:7px 10px;font-size:13px}#wx span{color:var(--muted);margin:0 2px 0 4px}#wx i{width:1px;height:18px;background:var(--line);margin:0 4px}#wx button{font:inherit;font-size:12px;padding:5px 10px;border-radius:999px;border:1px solid var(--line);background:#1b1e23;color:var(--text);cursor:pointer}#wx button.on{background:var(--accent);border-color:var(--accent);color:#111}";
   document.head.appendChild(st); }
 const V = (x, y, z = 0) => new THREE.Vector3(x, z, -y);   // 지역좌표(x 동, y 북) → three(x, 위, -y)
@@ -1517,14 +1518,19 @@ function traceLayer(year) {   // 반투명 기둥(높이 = 침수 깊이 × 4, �
     pin.position.copy(V(c.x, c.y, top / 2)); g.add(pin); const ball = new THREE.Mesh(new THREE.SphereGeometry(4.2, 16, 10), new THREE.MeshBasicMaterial({ color: TRACE_C(f.d) })); ball.position.copy(V(c.x, c.y, top)); g.add(ball); }
   return g; }
 function traceCenter(f) { const r = f.r[0]; let x = 0, y = 0; for (let i = 0; i < r.length; i += 2) { x += r[i]; y += r[i + 1]; } return { x: x / (r.length / 2), y: y / (r.length / 2) }; }
-SC.flood = { hp: false, air: true, tools: "강우량·배수 능력을 바꾸면 낮은 곳부터 물이 찹니다 · 건물을 누르면 그 자리 물 깊이",
+SC.flood = { hp: false, air: true, tools: "강우량·배수 능력을 바꾸면 침수 위험이 높은 곳부터 물이 찹니다 · 건물을 누르면 그 자리 위험도·물 깊이",
   init() { if (!DEM) { msg("지형 자료(dem.json)를 못 읽었습니다", 3); return; }
     this.rain = 100; this.drain = 75; this.mps = 5; this.t = 0; this.V = 0; this.L = 0; this.hit = new Map();
     const S = 5, W = (DEM.nx - 1) * DEM.step, Hh = (DEM.ny - 1) * DEM.step; this.nx = Math.round(W / S) + 1; this.ny = Math.round(Hh / S) + 1; this.S = S;
     this.zc = new Float32Array(this.nx * this.ny); for (let j = 0; j < this.ny; j++) for (let i = 0; i < this.nx; i++) this.zc[j * this.nx + i] = demZ(DEM.x0 + i * S, DEM.y0 + j * S);
     this.sorted = Float32Array.from(this.zc).sort(); this.zmin = this.sorted[0];
+    { const nx = this.nx, ny = this.ny, I = new Float64Array((nx + 1) * (ny + 1)), r = 30; this.dep = new Float32Array(nx * ny);   // 주변 150m 평균보다 낮은 정도(0~1)
+      for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) I[(j + 1) * (nx + 1) + i + 1] = this.zc[j * nx + i] + I[j * (nx + 1) + i + 1] + I[(j + 1) * (nx + 1) + i] - I[j * (nx + 1) + i];
+      for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) { const i0 = Math.max(0, i - r), i1 = Math.min(nx, i + r + 1), j0 = Math.max(0, j - r), j1 = Math.min(ny, j + r + 1);
+        const m = (I[j1 * (nx + 1) + i1] - I[j0 * (nx + 1) + i1] - I[j1 * (nx + 1) + i0] + I[j0 * (nx + 1) + i0]) / ((i1 - i0) * (j1 - j0)); this.dep[j * nx + i] = Math.max(0, Math.min(1, (m - this.zc[j * nx + i]) / 1.5)); } }
+    this.D = new Float32Array(this.nx * this.ny); this.R = null;
     { const th = this.sorted[Math.floor(this.sorted.length * 0.06)]; let sx = 0, sy = 0, n = 0; for (let j = 0; j < this.ny; j++) for (let i = 0; i < this.nx; i++) if (this.zc[j * this.nx + i] <= th) { sx += DEM.x0 + i * S; sy += DEM.y0 + j * S; n++; }
-      if (n) { player.x = sx / n; player.y = sy / n; } }   // 가장 낮은 곳 쪽으로 화면
+      if (n) { player.x = sx / n; player.y = sy / n; } }   // (위험 지도를 만들면 흔적 쪽으로 옮김)
     const g = new THREE.PlaneGeometry(W, Hh, this.nx - 1, this.ny - 1); g.rotateX(-Math.PI / 2);   // 꼭짓점 순서: 북쪽 줄부터
     this.geo = g; this.water = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color: 0x5b6f6a, roughness: 0.08, metalness: 0.1, transparent: true, opacity: 0.82 }));
     this.water.position.copy(V(DEM.x0 + W / 2, DEM.y0 + Hh / 2, 0)); this.water.receiveShadow = true; scene.add(this.water); extra.push(this.water);
@@ -1538,7 +1544,7 @@ SC.flood = { hp: false, air: true, tools: "강우량·배수 능력을 바꾸면
       <div class="lg"><span><i style="background:#f2d24b"></i>0.1m</span><span><i style="background:#f29a3a"></i>0.3m</span><span><i style="background:#e0483a"></i>0.5m 이상</span></div>
       <div id="f_info" class="note"></div>
       <div class="note">실제 흔적: 서울특별시 침수흔적도(서울 열린데이터광장, 공공누리 1유형) — 실제로 잠겼던 필지와 깊이입니다. 기둥 높이는 깊이를 4배로 과장해 보여 줍니다.</div>
-      <div class="note">지형은 공개 30m급 지형 타일(SRTM 등)을 평활해 썼고 건물 높이가 섞여 수 m 오차가 있습니다. 배수 능력을 넘는 비만 쌓이고, 쌓인 물은 낮은 곳부터 차며 30분 시간 상수로 하천·하수로 빠진다고 본 <b>가정</b>입니다(하수관·한강 수위·지하 공간은 넣지 않음). 깊이 기준도 안내용 가정값입니다.</div>`);
+      <div id="f_val" class="note"></div><div class="note">계산 방법: 5m 칸마다 <b>침수 위험도</b> = 과거 실제 침수 흔적이 몰린 정도(75%) + 주변 150m보다 움푹한 정도(25%, 공개 30m급 지형). 배수 능력을 넘는 비가 쌓일수록(30분 시간 상수로 빠짐) 위험도가 높은 곳부터 잠깁니다. 과거 흔적에 기댄 <b>통계적 가정</b>이며 하수관·한강 수위를 계산한 물리 모형이 아닙니다. 깊이 기준도 안내용 가정값입니다.</div>`);
     $("f_r").oninput = e => { this.rain = +e.target.value; $("f_rv").textContent = this.rain + " mm"; }; $("f_d").oninput = e => { this.drain = +e.target.value; $("f_dv").textContent = this.drain + " mm/h"; };
     $("f_s").onchange = e => this.mps = +e.target.value; $("f_p").onclick = () => { this.stop = !this.stop; $("f_p").textContent = this.stop ? "비 다시" : "비 그침"; }; $("f_x").onclick = () => this.reset();
     this.ch = new LiveChart([{ label: "가장 깊은 곳(cm)", color: "#3295d2", unit: "cm" }, { label: "30cm↑ 건물", color: "#e0483a", y2: true, fill: false, unit: "동" }], { h: 160, xt: "경과(분)" });
@@ -1549,24 +1555,38 @@ SC.flood = { hp: false, air: true, tools: "강우량·배수 능력을 바꾸면
     $("f_go").onclick = () => { const L = (this.trList || []).filter(f => /성수/.test(f.z)), P = (L.length ? L : this.trList || []).map(traceCenter); if (!P.length) return; player.x = P.reduce((a, p) => a + p.x, 0) / P.length; player.y = P.reduce((a, p) => a + p.y, 0) / P.length; dist = 560; };
     this.tr = null; this.trList = []; setTimeout(showTr, TRACES ? 0 : 1200);
     this.dist0 = 480; dist = 480; this.reset(); },
-  reset() { if (this.ch) this.ch.reset(); this.lastC = -1; for (const b of this.hit.keys()) paint(b, null); this.hit.clear(); this.t = 0; this.V = 0; this.L = this.zmin - 0.01; this.stop = false; this.mesh(); },
+  riskFrom(feats) { const nx = this.nx, ny = this.ny, S = this.S, K = new Float32Array(nx * ny), sg = 35, R3 = Math.ceil(3 * sg / S);
+    for (const f of feats) { const c = traceCenter(f), w = 0.5 + f.d * 2, ci = Math.round((c.x - DEM.x0) / S), cj = Math.round((c.y - DEM.y0) / S);
+      for (let j = cj - R3; j <= cj + R3; j++) for (let i = ci - R3; i <= ci + R3; i++) { if (i < 0 || j < 0 || i >= nx || j >= ny) continue; const dx = (i - ci) * S, dy = (j - cj) * S; K[j * nx + i] += w * Math.exp(-(dx * dx + dy * dy) / (2 * sg * sg)); } }
+    let km = 1e-6; for (const v of K) km = Math.max(km, v); const R = new Float32Array(nx * ny);
+    for (let k = 0; k < R.length; k++) R[k] = 0.75 * Math.min(1, K[k] / (km * 0.5)) + 0.25 * this.dep[k]; return R; },
+  cell(x, y) { const i = Math.round((x - DEM.x0) / this.S), j = Math.round((y - DEM.y0) / this.S); return i < 0 || j < 0 || i >= this.nx || j >= this.ny ? -1 : j * this.nx + i; },
+  buildRisk() { if (!TRACES || this.R) return; const all = TRACES.features; this.R = this.riskFrom(all);
+    const R10 = this.riskFrom(all.filter(f => f.y === "2010")), vals = [];   // 검증: 2010년만으로 만든 지도에 다른 해 흔적이 얼마나 들어가나
+    for (let j = 0; j < this.ny; j++) for (let i = 0; i < this.nx; i++) { const x = DEM.x0 + i * this.S, y = DEM.y0 + j * this.S; if (x > MX0 && x < MX1 && y > MY0 && y < MY1) vals.push(R10[j * this.nx + i]); }
+    vals.sort((a, b) => a - b); const thr = vals[Math.floor(vals.length * 0.9)], others = all.filter(f => f.y !== "2010"), hit = others.filter(f => { const c = traceCenter(f), k = this.cell(c.x, c.y); return k >= 0 && R10[k] >= thr; }).length;
+    this.val = { hit, n: others.length };
+    if ($("f_val")) $("f_val").innerHTML = `<b>검증</b>: 2010년 흔적만으로 만든 위험 지도의 상위 10% 구역에, 다른 해(2011~2022년) 흔적 ${others.length}곳 중 <b>${hit}곳(${Math.round(hit / others.length * 100)}%)</b>이 들어갑니다. 아무렇게나 고르면 약 10%입니다.`;
+    const L = all.filter(f => /성수/.test(f.z)).map(traceCenter); if (L.length) { player.x = L.reduce((a, p) => a + p.x, 0) / L.length; player.y = L.reduce((a, p) => a + p.y, 0) / L.length; } },
+  reset() { if (this.ch) this.ch.reset(); this.lastC = -1; for (const b of this.hit.keys()) paint(b, null); this.hit.clear(); this.t = 0; this.V = 0; this.D.fill(0); this.stop = false; this.mesh(); },
   level(V) { const A = this.S * this.S, z = this.sorted; let lo = this.zmin, hi = this.zmin + 15; for (let k = 0; k < 40; k++) { const m = (lo + hi) / 2; let v = 0; for (let i = 0; i < z.length && z[i] < m; i++) v += (m - z[i]) * A; if (v < V) lo = m; else hi = m; } return lo; },
-  mesh() { const p = this.geo.attributes.position.array, nx = this.nx, ny = this.ny;
-    for (let r = 0; r < ny; r++) for (let i = 0; i < nx; i++) { const j = ny - 1 - r, d = this.L - this.zc[j * nx + i]; p[(r * nx + i) * 3 + 1] = d > 0.02 ? d : -0.5; }
+  mesh() { const p = this.geo.attributes.position.array, nx = this.nx, ny = this.ny, hx = this.V / (nx * ny * this.S * this.S);   // hx = 넘쳐 쌓인 비(m, 동네 평균)
+    let mx = 0; if (this.R) for (let k = 0; k < this.D.length; k++) { const d = Math.max(0, this.R[k] * hx * 28 - 0.04); this.D[k] = Math.min(1.2, d); if (d > mx) mx = d; } this.maxD = mx;
+    for (let r = 0; r < ny; r++) for (let i = 0; i < nx; i++) { const j = ny - 1 - r, d = this.D[j * nx + i]; p[(r * nx + i) * 3 + 1] = d > 0.02 ? d : -0.5; }
     this.geo.attributes.position.needsUpdate = true; this.geo.computeVertexNormals(); },
-  depth(x, y) { return Math.max(0, this.L - demZ(x, y)); },
-  onPick(b, x, y) { const d = this.depth(b ? b.cx : x, b ? b.cy : y); $("f_info").innerHTML = `누른 곳 지형 ${demZ(x, y).toFixed(1)}m · 물 깊이 <b>${(d * 100).toFixed(0)} cm</b>`; },
-  update(dt) { if (!DEM) return;
+  depth(x, y) { const k = this.cell(x, y); return k < 0 ? 0 : this.D[k]; },
+  onPick(b, x, y) { const px = b ? b.cx : x, py = b ? b.cy : y, d = this.depth(px, py), k = this.cell(px, py); $("f_info").innerHTML = `누른 곳 침수 위험도 <b>${k >= 0 && this.R ? Math.round(this.R[k] * 100) : 0}</b>/100 · 물 깊이 <b>${(d * 100).toFixed(0)} cm</b>`; },
+  update(dt) { if (!DEM) return; if (!this.R) this.buildRisk();
     const dm = dt * this.mps; this.t += dm;
     if (!this.stop) this.V += Math.max(0, this.rain - this.drain) / 1000 / 60 * dm * this.nx * this.ny * this.S * this.S;   // 넘친 비(m) × 면적
     this.V *= Math.exp(-dm / 30);   // 쌓인 물은 하천·하수로 30분 시간 상수로 빠진다고 가정
-    this.acc = (this.acc || 0) + dt; if (this.acc > 0.25) { this.acc = 0; this.L = this.level(this.V); this.mesh();
+    this.acc = (this.acc || 0) + dt; if (this.acc > 0.25) { this.acc = 0; this.mesh();
       let n = [0, 0, 0]; for (const b of B) { if (Math.hypot(b.cx - player.x, b.cy - player.y) > 900) continue; const d = this.depth(b.cx, b.cy), g = FLOOD_TH.findIndex(([t]) => d >= t);
         const was = this.hit.get(b); if (g >= 0) { n[g]++; if (was !== g) { this.hit.set(b, g); paint(b, FLOOD_TH[g][1]); } } else if (was != null) { this.hit.delete(b); paint(b, null); } }
-      this.cnt = n; this.trHit = (this.trList || []).filter(f => { const c = traceCenter(f); return this.depth(c.x, c.y) >= 0.1; }).length; if (this.ch && Math.floor(this.t / 5) !== this.lastC) { this.lastC = Math.floor(this.t / 5); this.ch.push(Math.round(this.t), [Math.max(0, this.L - this.zmin) * 100, n[0] + n[1]]); } }
+      this.cnt = n; this.trHit = (this.trList || []).filter(f => { const c = traceCenter(f); return this.depth(c.x, c.y) >= 0.1; }).length; if (this.ch && Math.floor(this.t / 5) !== this.lastC) { this.lastC = Math.floor(this.t / 5); this.ch.push(Math.round(this.t), [(this.maxD || 0) * 100, n[0] + n[1]]); } }
     for (const w of NPC) { const d = this.depth(w.x, w.y); w.mode = d > 0.15 ? "flee" : "walk"; w.from_ = { x: w.x, y: w.y - 50 }; stepWalker(w, dt, d > 0.3 ? w.sp * 0.5 : w.sp); collide(w, 0.35); w.z = 0; showActor(w, true, dt, 1); }
     const c = this.cnt || [0, 0, 0], hh = Math.floor(this.t / 60), mm = Math.floor(this.t % 60);
-    setRows([["경과", `${hh}시간 ${mm}분`], ["실제 흔적 중 모형도 잠김", `${this.trHit || 0} / ${(this.trList || []).length}곳`], ["쌓인 물", Math.round(this.V).toLocaleString() + " m³"], ["가장 깊은 곳", Math.max(0, this.L - this.zmin).toFixed(2) + " m"], ...FLOOD_TH.map(([, , t], i) => [t + " 건물", c[i] + "동"])]);
+    setRows([["경과", `${hh}시간 ${mm}분`], ["실제 흔적 중 모형도 잠김", `${this.trHit || 0} / ${(this.trList || []).length}곳`], ["쌓인 물", Math.round(this.V).toLocaleString() + " m³"], ["가장 깊은 곳", (this.maxD || 0).toFixed(2) + " m"], ["검증(다른 해 흔적)", this.val ? `${this.val.hit} / ${this.val.n}곳` : "-"], ...FLOOD_TH.map(([, , t], i) => [t + " 건물", c[i] + "동"])]);
     $("goal").textContent = `집중호우 · 시간당 ${this.rain}mm · 배수 ${this.drain}mm/h` + (this.rain <= this.drain && !this.stop ? " · 배수 능력 안이라 물이 안 쌓임" : ""); },
   marks() { return [...this.hit].map(([b, g]) => [b.cx, b.cy, hex6(FLOOD_TH[g][1]), 3.5]); } };
 
@@ -1672,7 +1692,20 @@ let PAUSED = false, SPK = 1;
   $("time").insertBefore($("goal"), $("spd")); $("goal").className = "";
   $("play").onclick = () => { PAUSED = !PAUSED; $("play").textContent = PAUSED ? "▶" : "❚❚"; $("play").setAttribute("aria-label", PAUSED ? "재생" : "일시정지"); };
   for (const b of $("spd").querySelectorAll("button")) b.onclick = () => { SPK = +b.dataset.k; for (const o of $("spd").children) o.classList.toggle("on", o === b); };
+  $("nowBtn").onclick = () => nowWeather(true);
   $("outBtn").onclick = () => { document.body.classList.toggle("showOut"); $("outBtn").textContent = document.body.classList.contains("showOut") ? "조작" : "결과"; }; }
+// ══ 지금 날씨: MET Norway(노르웨이 기상청) 공개 예보 API, 키 없음, CC BY 4.0 — 성수동 좌표만 보냄 ══
+async function nowWeather(apply = true) {
+  const el = $("nowWx");
+  try { const r = await fetch("https://api.met.no/weatherapi/locationforecast/2.0/compact?lat=37.543&lon=127.054"); const j = await r.json(), ts = j.properties.timeseries[0], d = ts.data.instant.details;
+    const n1 = ts.data.next_1_hours || ts.data.next_6_hours || {}, sym = (n1.summary && n1.summary.symbol_code) || "";
+    const w = /snow|sleet/.test(sym) ? "snow" : /rain|shower|drizzle/.test(sym) ? "rain" : "clear";
+    const now = new Date(), m = now.getMonth(), alt = sunPos(new Date(now.getFullYear(), m, now.getDate()), now.getHours() + now.getMinutes() / 60).alt * 180 / Math.PI;
+    const t = alt < -3 ? "night" : alt < 8 ? "dusk" : "day", se = m >= 2 && m <= 4 ? "spring" : m >= 5 && m <= 7 ? "summer" : m >= 8 && m <= 10 ? "autumn" : "winter";
+    const ko = w === "snow" ? (/sleet/.test(sym) ? "진눈깨비" : "눈") : w === "rain" ? "비" : /fog/.test(sym) ? "안개" : /cloudy/.test(sym) ? "흐림" : /fair|partly/.test(sym) ? "구름 조금" : "맑음";
+    el.textContent = `지금 성수동 ${Math.round(d.air_temperature)}°C ${ko}`; el.title = "날씨: MET Norway(노르웨이 기상청) 예보, CC BY 4.0";
+    if (apply) { ENV.season = se; ENV.weather = w; ENV.time = t; ENV.overcast = /cloudy|fog/.test(sym) && w === "clear"; if (w !== "snow" && se !== "winter") ENV.snow = 0; if (!S || S !== SC.sun) applyEnv(); }
+  } catch (e) { el.textContent = "지금 날씨를 못 불러왔습니다"; } }
 function uiOnStart(s) { for (const li of $("routeList").children) li.classList.toggle("now", li.dataset.id === s.id); for (const b of $("views").children) b.classList.toggle("on", b.dataset.id === s.id);
   PAUSED = false; $("play").textContent = "❚❚"; $("airBtn").classList.toggle("on", air); document.body.classList.remove("showOut"); $("outBtn").textContent = "결과"; }
 function start(s) {
@@ -1769,7 +1802,7 @@ window.__orient = (names) => { renderer.setAnimationLoop(null); const g = new TH
   const c = new THREE.Vector3(player.x + 0, 0, -player.y); g.position.set(c.x - x / 2, 30, c.z); camera.position.set(c.x, 33, c.z + x * 0.62); camera.lookAt(c.x, 32, c.z); camera.fov = 40; camera.updateProjectionMatrix(); scene.fog.far = 5000; $("menu").style.display = "none"; document.querySelectorAll(".hud").forEach(e => e.style.visibility = "hidden"); renderer.setAnimationLoop(() => renderer.render(scene, camera)); return x; };
 window.__sim = n => { for (let i = 0; i < n; i++) frame(0.05); };   // 점검용: 화면이 숨겨져도 n 프레임(0.05초씩) 진행
 yaw = 0.6; pitch = 0.9; dist = 260;
-{ const q = new URLSearchParams(location.search); if (!q.has("bare")) setTimeout(() => start(VIEWS2[0]), 200); if (q.has("bare")) {   // 시안·내장용: UI 없이 3D 화면만(?bare=fire 처럼 시나리오 지정)
+{ const q = new URLSearchParams(location.search); if (!q.has("bare")) setTimeout(() => { start(VIEWS2[0]); nowWeather(true); }, 200); if (q.has("bare")) {   // 시안·내장용: UI 없이 3D 화면만(?bare=fire 처럼 시나리오 지정)
   const st = document.createElement("style"); st.textContent = ".hud,#menu,#wx,#end,#load{display:none!important}"; document.head.appendChild(st);
   setTimeout(() => { start(SCN.find(s => s.id === q.get("bare")) || VIEWS2[0]); if (q.has("season")) { ENV.season = q.get("season"); applyEnv(); } }, 300); } }
 __readyRes();
