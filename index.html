@@ -160,6 +160,7 @@ import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
 import { GTAOPass } from "three/addons/postprocessing/GTAOPass.js";
 import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
 import { SMAAPass } from "three/addons/postprocessing/SMAAPass.js";
+import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
 const $ = id => document.getElementById(id);
 const rnd = (a, b) => a + Math.random() * (b - a), pick = a => a[Math.floor(Math.random() * a.length)];
 const fmt = s => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
@@ -184,7 +185,7 @@ sun.shadow.mapSize.set(2048, 2048); const sc = sun.shadow.camera; sc.left = -70;
 scene.add(sun, sun.target);
 function setMood(sky, fogFar, hemiI, sunI) { scene.background.set(sky); scene.fog.color.set(sky); scene.fog.far = fogFar; hemi.intensity = hemiI; sun.intensity = sunI; }
 // ══ 계절·날씨: 봄·여름·가을·겨울(해 높이·하늘·가로수 색·눈 쌓임) + 맑음·비·눈 ══
-const ENV = { season: "summer", weather: "clear", snow: 0, wet: 0 };
+const ENV = { season: "summer", weather: "clear", time: "day", snow: 0, wet: 0 };
 const SEASON = { spring: { ko: "봄", date: [3, 15], sky: 0xc5d4e0, hemi: 0.17, sun: 3.3 }, summer: { ko: "여름", date: [6, 15], sky: 0xaec8de, hemi: 0.15, sun: 3.5 },
   autumn: { ko: "가을", date: [9, 20], sky: 0xc9cdd0, hemi: 0.16, sun: 3.1 }, winter: { ko: "겨울", date: [0, 15], sky: 0xd4dae0, hemi: 0.22, sun: 2.6 } };
 let SUN_DIR = null;   // 계절 날짜 14시 해 방향(NOAA 계산식)
@@ -200,9 +201,10 @@ function applyEnv() { snowify(scene); const se = SEASON[ENV.season], w = ENV.wea
   const sp = sunPos(new Date(2026, se.date[0], se.date[1]), 14); SUN_DIR = new THREE.Vector3(Math.sin(sp.az) * Math.cos(sp.alt), Math.max(0.08, Math.sin(sp.alt)), -Math.cos(sp.az) * Math.cos(sp.alt));
   const sky = w === "rain" ? 0x8e979f : w === "snow" ? 0xc3cad1 : se.sky;
   setMood(sky, w === "clear" ? 650 : w === "rain" ? 380 : 320, w === "clear" ? se.hemi : 0.42, w === "clear" ? se.sun : w === "rain" ? 0.7 : 1.0);
+  timeEnv();
   if (window.__sky && window.__sky.material.uniforms) { const u = window.__sky.material.uniforms; for (const k of Object.keys(u)) if (u[k].value && u[k].value.isColor) u[k].value.lerp(new THREE.Color(sky), 0.0); }
   SNOW_U.value = ENV.season === "winter" ? Math.max(ENV.snow, 0.75) : ENV.snow; treeColors(); if (window.__treesGLB) seasonTrees();
-  for (const b of document.querySelectorAll("#wx button")) b.classList.toggle("on", b.dataset.s === ENV.season || b.dataset.w === ENV.weather); }
+  for (const b of document.querySelectorAll("#wx button")) b.classList.toggle("on", b.dataset.s === ENV.season || b.dataset.w === ENV.weather || b.dataset.t === ENV.time); }
 // 눈 쌓임: 위를 향한 면(지붕·땅·도로·차 위)을 하얗게 — 모든 표준 재질 셰이더에 한 줄 끼움
 const SNOW_U = { value: 0 }, WET_U = { value: 0 };
 THREE.ShaderChunk.normal_fragment_maps += `
@@ -233,11 +235,40 @@ function updateWeather(dt) { const w = ENV.weather, c = camera.position, R = WX;
     const X = c.x + p.x, Y = Math.max(0, c.y - 25) + p.y, Z = c.z + p.z;
     if (w === "rain") { R.pos.set([X, Y, Z, X + 0.03, Y + 0.7, Z], i * 6); } else R.sp.set([X, Y, Z], i * 3); }
   if (w === "rain") R.rain.geometry.attributes.position.needsUpdate = true; else R.snow.geometry.attributes.position.needsUpdate = true; }
+// ══ 낮·저녁·밤: 해 높이·하늘·빛 + 밤 불빛(창·진열창·간판·가로등) ══
+const NIGHT_U = { value: 0 };   // 0 낮 ~ 1 밤
+const SKY_DEF = { top: new THREE.Color(0x6f9ccc), bot: new THREE.Color(0xd5dde4) };
+function glowFor(m) {   // 창유리: 2.6×3m 칸마다 무작위로 불 켜짐, 진열창: 전부 켜짐
+  const n = (m.name || "").replace(/\.\d+$/, ""), shop = n === "진열창"; if (n !== "창유리" && !shop) return;
+  const prev = m.onBeforeCompile, key = m.customProgramCacheKey;
+  m.onBeforeCompile = (sh, r) => { if (prev) prev.call(m, sh, r); sh.uniforms.uNight = NIGHT_U;
+    if (!sh.vertexShader.includes("varying vec3 vTW;")) sh.vertexShader = TRI_V[0] + sh.vertexShader.replace(...TRI_V[1]);
+    sh.fragmentShader = (sh.fragmentShader.includes("varying vec3 vTW;") ? "" : "varying vec3 vTW; varying vec3 vTN;\n") + "uniform float uNight;\n" + sh.fragmentShader.replace("#include <emissivemap_fragment>", `#include <emissivemap_fragment>
+  { vec3 cc = floor(vTW / vec3(2.6, 3.0, 2.6)); float hh = fract(sin(dot(cc, vec3(12.9898, 78.233, 45.164))) * 43758.5453);
+    float lit = ${shop ? "1.0" : "step(0.45, hh)"}; vec3 warm = mix(vec3(1.0, 0.7, 0.4), vec3(0.85, 0.92, 1.0), step(0.85, hh));
+    totalEmissiveRadiance += uNight * lit * warm * ${shop ? "2.6" : "(0.9 + hh * 0.8)"}; }`); };
+  m.customProgramCacheKey = () => (key ? key.call(m) : "") + "|glow" + (shop ? "S" : "W"); m.needsUpdate = true; }
+const LAMP_GLOW = { pools: null, heads: null };
+function timeEnv() {   // applyEnv 안에서 부름: 해·하늘·빛을 시간대에 맞춤
+  const t = ENV.time, se = SEASON[ENV.season], d = new Date(2026, se.date[0], se.date[1]), u = window.__sky && window.__sky.material.uniforms;
+  let night = 0, sunCol = 0xfff1dc;
+  if (t === "dusk") { let best = 17, bd = 9; for (let h = 15; h <= 20.5; h += 0.05) { const a = sunPos(d, h).alt; if (Math.abs(a - 0.07) < bd) { bd = Math.abs(a - 0.07); best = h; } }
+    const sp = sunPos(d, best); SUN_DIR = new THREE.Vector3(Math.sin(sp.az) * Math.cos(sp.alt), Math.max(0.06, Math.sin(sp.alt)), -Math.cos(sp.az) * Math.cos(sp.alt));
+    night = 0.45; sunCol = 0xff9a55; if (u) { u.top.value.set(0x3f4c78); u.bot.value.set(0xf0a37a); } setMood(0xe8a789, 520, 0.2, 1.9); renderer.toneMappingExposure = 0.95; }
+  else if (t === "night") { SUN_DIR = new THREE.Vector3(-0.35, 0.75, 0.55).normalize();   // 달빛 방향(고정)
+    night = 1; sunCol = 0x9fb4ff; if (u) { u.top.value.set(0x04070e); u.bot.value.set(0x18213a); } setMood(0x141c30, 420, 0.05, 0.16); renderer.toneMappingExposure = 1.0; }
+  else { if (u) { u.top.value.copy(SKY_DEF.top); u.bot.value.copy(SKY_DEF.bot); } renderer.toneMappingExposure = 0.85; }
+  if (t !== "day" && ENV.weather !== "clear" && u) { u.top.value.multiplyScalar(0.6); u.bot.value.multiplyScalar(0.7); scene.background.multiplyScalar(0.7); scene.fog.color.multiplyScalar(0.7); }
+  sun.color.setHex(sunCol); NIGHT_U.value = night; envDim(t === "night" ? 0.05 : t === "dusk" ? 0.3 : 0.55);
+  if (window.__signMat) window.__signMat.emissiveIntensity = 0.12 + 1.2 * night;
+  if (LAMP_GLOW.pools) { LAMP_GLOW.pools.visible = LAMP_GLOW.heads.visible = night > 0.3; LAMP_GLOW.pools.material.uniforms.uA.value = night; }
+  if (window.__bloom) { window.__bloom.enabled = night > 0.3; window.__bloom.strength = 0.55 * night; }
+  renderer.shadowMap.needsUpdate = true; }
 // 버튼
 { const d = document.createElement("div"); d.id = "wx";
-  d.innerHTML = `<span>계절</span>${Object.entries(SEASON).map(([k, v]) => `<button data-s="${k}">${v.ko}</button>`).join("")}<i></i><span>날씨</span><button data-w="clear">맑음</button><button data-w="rain">비</button><button data-w="snow">눈</button>`;
+  d.innerHTML = `<span>계절</span>${Object.entries(SEASON).map(([k, v]) => `<button data-s="${k}">${v.ko}</button>`).join("")}<i></i><span>날씨</span><button data-w="clear">맑음</button><button data-w="rain">비</button><button data-w="snow">눈</button><i></i><span>시간</span><button data-t="day">낮</button><button data-t="dusk">저녁</button><button data-t="night">밤</button>`;
   document.body.appendChild(d);
-  d.onclick = e => { const b = e.target.closest("button"); if (!b) return; if (b.dataset.s) { ENV.season = b.dataset.s; if (ENV.season !== "winter" && ENV.weather !== "snow") ENV.snow = 0; } if (b.dataset.w) ENV.weather = b.dataset.w; applyEnv(); };
+  d.onclick = e => { const b = e.target.closest("button"); if (!b) return; if (b.dataset.s) { ENV.season = b.dataset.s; if (ENV.season !== "winter" && ENV.weather !== "snow") ENV.snow = 0; } if (b.dataset.w) ENV.weather = b.dataset.w; if (b.dataset.t) ENV.time = b.dataset.t; applyEnv(); };
   const st = document.createElement("style"); st.textContent = "#wx{left:50%;top:58px;transform:translateX(-50%);display:flex;align-items:center;gap:6px;padding:7px 10px;font-size:13px}#wx span{color:var(--muted);margin:0 2px 0 4px}#wx i{width:1px;height:18px;background:var(--line);margin:0 4px}#wx button{font:inherit;font-size:12px;padding:5px 10px;border-radius:999px;border:1px solid var(--line);background:#1b1e23;color:var(--text);cursor:pointer}#wx button.on{background:var(--accent);border-color:var(--accent);color:#111}";
   document.head.appendChild(st); }
 const V = (x, y, z = 0) => new THREE.Vector3(x, z, -y);   // 지역좌표(x 동, y 북) → three(x, 위, -y)
@@ -246,7 +277,7 @@ new RGBELoader().load("textures/wide_street_01_2k.hdr", t => { const pm = new TH
 renderer.toneMappingExposure = 0.85; window.__g = { scene, sun, hemi, renderer, camera };
 const COMP = new EffectComposer(renderer); COMP.addPass(new RenderPass(scene, camera));
 const GTAO = new GTAOPass(scene, camera, innerWidth, innerHeight); GTAO.updateGtaoMaterial({ radius: 2.5, distanceExponent: 1.5, thickness: 2, scale: 1.2, samples: 12 }); GTAO.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 6, rings: 2, samples: 12 }); GTAO.blendIntensity = 0.85;
-COMP.addPass(GTAO); COMP.addPass(new OutputPass()); COMP.addPass(new SMAAPass(innerWidth * renderer.getPixelRatio(), innerHeight * renderer.getPixelRatio()));; /* 후처리 뒤 테두리 계단 없애기(SMAA) */ window.__comp = COMP; let AO_ON = true;   // 건물 밑동·골목 그늘(GTAO). Q 로 끄고 켬
+COMP.addPass(GTAO); { const BL = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0, 0.6, 0.8); BL.enabled = false; COMP.addPass(BL); window.__bloom = BL; } COMP.addPass(new OutputPass()); COMP.addPass(new SMAAPass(innerWidth * renderer.getPixelRatio(), innerHeight * renderer.getPixelRatio()));; /* 후처리 뒤 테두리 계단 없애기(SMAA) */ window.__comp = COMP; let AO_ON = true;   // 건물 밑동·골목 그늘(GTAO). Q 로 끄고 켬
 addEventListener("keydown", e => { if (e.code === "KeyQ" && !e.repeat && document.activeElement.tagName !== "INPUT") { AO_ON = !AO_ON; msg("그늘 효과(AO) " + (AO_ON ? "켬" : "끔"), 1.2); } }); renderer.shadowMap.autoUpdate = false; let shT = 0; const shP = new THREE.Vector3();   // 그림자는 0.25초마다 또는 해·시점이 움직일 때만 다시 그림
 const city = await (await fetch("data/city.json")).json();
 const B = city.buildings;
@@ -521,7 +552,7 @@ const SIGN_TEX = (() => { const cv = document.createElement("canvas"); cv.width 
       for (const sgn of [1, -1]) pushQuad(face, fuv, { x: ex + best.nx * 0.55 + (-best.ny) * 0.085 * sgn, y: ey + best.ny * 0.55 + best.nx * 0.085 * sgn }, { x: -best.ny * sgn, y: best.nx * sgn }, 0.82, 2.1, zz + 0.05, (c2 % 4) / 4, 1 - (Math.floor(c2 / 4) + 1) / 16, 0.25, 1 / 16); }
     nSign++; (window.__signPts || (window.__signPts = [])).push([best.mx, best.my, best.nx, best.ny]); }
   if (face.length) { const g = new THREE.BufferGeometry(); g.setAttribute("position", new THREE.Float32BufferAttribute(face, 3)); g.setAttribute("uv", new THREE.Float32BufferAttribute(fuv, 2)); g.computeVertexNormals();
-    const m = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ map: SIGN_TEX, roughness: 0.55, emissive: 0xffffff, emissiveMap: SIGN_TEX, emissiveIntensity: 0.12, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -1 })); m.castShadow = false; m.receiveShadow = true; scene.add(m); }
+    const m = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ map: SIGN_TEX, roughness: 0.55, emissive: 0xffffff, emissiveMap: SIGN_TEX, emissiveIntensity: 0.12, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -1 })); window.__signMat = m.material; m.castShadow = false; m.receiveShadow = true; scene.add(m); }
   if (box.length) { const m = new THREE.Mesh(mergeGeometries(box), new THREE.MeshStandardMaterial({ color: 0x2b2d30, roughness: 0.6, metalness: 0.4 })); m.castShadow = m.receiveShadow = true; scene.add(m); }
   window.__signs = nSign; }
 // 가로등(큰길 양쪽 30m) · 전봇대(골목 28m) · 전선
@@ -543,6 +574,15 @@ const SIGN_TEX = (() => { const cv = document.createElement("canvas"); cv.width 
   for (const [G, list, col] of [[lampG, lamps, 0x3d4247], [poleG, poles, 0x9c9a94]]) { if (!list.length) continue; const im = new THREE.InstancedMesh(G, new THREE.MeshStandardMaterial({ color: col, roughness: 0.7, metalness: 0.3 }), list.length);
     list.forEach((p, i) => { q.setFromAxisAngle(up, p.h); m.compose(V(p.x, p.y, 0), q, one); im.setMatrixAt(i, m); }); im.castShadow = im.receiveShadow = true; scene.add(im); }
   if (wires.length) { const g = new THREE.BufferGeometry(); g.setAttribute("position", new THREE.Float32BufferAttribute(wires, 3)); scene.add(new THREE.LineSegments(g, new THREE.LineBasicMaterial({ color: 0x1c1d1f, transparent: true, opacity: 0.85 }))); }
+  // 밤: 가로등 머리 불빛 + 바닥 불빛 웅덩이(가산 혼합)
+  if (lamps.length) { const pg = new THREE.PlaneGeometry(16, 16).rotateX(-Math.PI / 2), hg = new THREE.BoxGeometry(0.7, 0.08, 0.28);
+    const pm = new THREE.ShaderMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, uniforms: { uA: { value: 0 } },
+      vertexShader: "varying vec2 vU; void main(){ vU = uv; gl_Position = projectionMatrix * modelViewMatrix * instanceMatrix * vec4(position,1.); }",
+      fragmentShader: "uniform float uA; varying vec2 vU; void main(){ float d = length(vU - .5) * 2.; float a = pow(max(0., 1. - d), 2.2) * .55 * uA; gl_FragColor = vec4(vec3(1., .78, .5) * a, a); }" });
+    const pools = new THREE.InstancedMesh(pg, pm, lamps.length), heads = new THREE.InstancedMesh(hg, new THREE.MeshBasicMaterial({ color: 0xfff1cf }), lamps.length), mm = new THREE.Matrix4(), qq = new THREE.Quaternion(), upv = new THREE.Vector3(0, 1, 0), onev = new THREE.Vector3(1, 1, 1);
+    lamps.forEach((p, i) => { const hx = p.x - Math.cos(p.h) * 1.7, hy = p.y - Math.sin(p.h) * 1.7; qq.setFromAxisAngle(upv, p.h);
+      mm.compose(V(hx, hy, 0.13), new THREE.Quaternion(), onev); pools.setMatrixAt(i, mm); mm.compose(V(hx, hy, 7.98), qq, onev); heads.setMatrixAt(i, mm); });
+    pools.renderOrder = 2; pools.frustumCulled = heads.frustumCulled = false; pools.visible = heads.visible = false; scene.add(pools, heads); LAMP_GLOW.pools = pools; LAMP_GLOW.heads = heads; }
   // 쓰레기봉투: 전봇대 밑 일부
   const bagG = new THREE.SphereGeometry(0.32, 8, 6); bagG.scale(1, 1.25, 1); bagG.translate(0, 0.36, 0);
   const bags = []; for (const p of poles) if (Math.random() < 0.35) { const n = 1 + Math.floor(Math.random() * 3); for (let k = 0; k < n; k++) bags.push({ x: p.x + rnd(-0.7, 0.7), y: p.y + rnd(-0.7, 0.7), s: rnd(0.75, 1.15) }); }
@@ -573,7 +613,7 @@ try { $("load").textContent = "성수동 상세 건물 불러오는 중…(25MB)
   // 블렌더 절차 재질(색·때)은 glTF 로 안 넘어와 하얗게 보임 → 재질 이름으로 렌더와 비슷한 색을 다시 입힘
   const TINT = { "벽_brick": 0xa86f58, "벽_concrete": 0xbdb8ae, "벽_plaster": 0xddd3c1, "벽_unknown": 0xc4beb2, "벽_apartment": 0xe3e0d9, "벽_metal": 0x979da1, "벽_glass": 0x4d6273,
     "옥상": 0x8f978a, "창고 지붕(골강판)": 0x8a8f93, "창고 철문": 0x5c5f62, "물탱크": 0xd9d9d4, "set1": 0xbfbfbf, "set2": 0xbfbfbf };
-  const glass = new THREE.MeshStandardMaterial({ color: 0x2a3844, metalness: 0.6, roughness: 0.12 }), shop = new THREE.MeshStandardMaterial({ color: 0x4a5a62, metalness: 0.3, roughness: 0.1, emissive: 0x1a1810 });
+  const glass = new THREE.MeshStandardMaterial({ color: 0x2a3844, metalness: 0.6, roughness: 0.12 }), shop = new THREE.MeshStandardMaterial({ color: 0x4a5a62, metalness: 0.3, roughness: 0.1, emissive: 0x1a1810 }); glass.name = "창유리"; shop.name = "진열창";
   cd.scene.traverse(o => { if (!o.isMesh) return; o.castShadow = o.receiveShadow = true;
     o.material = [].concat(o.material).map(m => { if (m.name === "창유리") return glass; if (m.name === "진열창") return shop;
       if (m.name === "옥상") { const r = m.clone(); r.color.setHex(pick([0x4a8a5e, 0x3f7d55, 0x5b9468, 0x9a9a95, 0x8a8b86, 0xa9a8a2, 0x77786f, 0x9c6a5c])); r.roughness = 0.95; return r; }   // 렌더처럼 초록 방수·회색·분홍 섞기
@@ -988,7 +1028,7 @@ function mergeStatic(root) {
       for (let i = 0; i < n; i++) { col[i * 3] = cc.r; col[i * 3 + 1] = cc.g; col[i * 3 + 2] = cc.b; } g.setAttribute("color", new THREE.BufferAttribute(col, 3));
       geos.push(g); if (o.userData.b) parts.push([o.userData.b, v, n, cc.clone(), PAINTABLE(o.material)]); v += n; }
     const mg = mergeGeometries(geos, false); geos.forEach(g => g.dispose()); if (!mg) continue;
-    const mat = list[0].material.clone(); mat.color.setRGB(1, 1, 1); mat.vertexColors = true; mat.envMapIntensity = envDim.v ?? 0.55; triFor(mat);
+    const mat = list[0].material.clone(); mat.color.setRGB(1, 1, 1); mat.vertexColors = true; mat.envMapIntensity = envDim.v ?? 0.55; triFor(mat); glowFor(mat);
     const mesh = new THREE.Mesh(mg, mat); mesh.castShadow = list[0].castShadow; mesh.receiveShadow = true; mesh.matrixAutoUpdate = false; root.add(mesh);
     for (const [b, s, n, base, pt] of parts) (b.parts || (b.parts = [])).push({ g: mg, s, n, base, pt }); }
   for (const o of drop) { o.parent.remove(o); o.geometry.dispose(); if (o.userData.b && o.userData.b.meshes) o.userData.b.meshes = o.userData.b.meshes.filter(q => q !== o); }
@@ -1601,7 +1641,7 @@ let PAUSED = false, SPK = 1;
   for (const s of SCN) { const li = document.createElement("li"); li.dataset.id = s.id; li.innerHTML = `<button aria-label="${s.name}"></button><span>${s.name.replace("·연기 확산", "").replace("·그림자", "").replace(" 확산", "").replace(" 밀집", "").replace("집중호우 ", "")}</span>`;
     li.onclick = () => start(s); ol.appendChild(li); }
   for (const v of VIEWS2) { const b = document.createElement("button"); b.dataset.id = v.id; b.textContent = v.id === "free" ? "둘러보기" : v.name; b.onclick = () => start(v); $("views").appendChild(b); }
-  $("env").appendChild($("wx")); { const w = $("wx"), btn = [...w.querySelectorAll("button")], g1 = document.createElement("div"), g2 = document.createElement("div"); g1.className = g2.className = "grp"; btn.forEach(b => (b.dataset.s ? g1 : g2).appendChild(b)); w.innerHTML = ""; w.append(g1, g2); }
+  $("env").appendChild($("wx")); { const w = $("wx"), btn = [...w.querySelectorAll("button")], g1 = document.createElement("div"), g2 = document.createElement("div"), g3 = document.createElement("div"); g1.className = g2.className = g3.className = "grp"; btn.forEach(b => (b.dataset.s ? g1 : b.dataset.w ? g2 : g3).appendChild(b)); w.innerHTML = ""; w.append(g1, g2, g3); }
   $("out").appendChild($("map")); $("out").appendChild($("tools"));
   for (const id of ["flyBtn", "sndBtn"]) { const b = $(id); b.className = "ico"; b.removeAttribute("style"); $("time").appendChild(b); }
   $("flyBtn").textContent = "✈ 자유 비행"; $("flyBtn").title = "G: 자유 비행 (WASD 이동, Space 위, C 아래)";
