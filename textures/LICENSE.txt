@@ -1,0 +1,5 @@
+asphalt.jpg / asphalt_n.jpg: ambientCG "Road012A" (CC0 1.0, https://ambientcg.com/a/Road012A), 1024px 로 줄임
+wide_street_01_2k.hdr: Poly Haven "Wide Street 01" (CC0 1.0, https://polyhaven.com/a/wide_street_01)
+
+bricks.jpg, bricks_n.jpg: ambientCG Bricks085 (CC0), 1K로 줄임
+concrete.jpg, concrete_n.jpg: ambientCG Concrete034 (CC0), 1K로 줄임
