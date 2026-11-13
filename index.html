@@ -198,7 +198,7 @@ const FOGB = { near: 120, far: 650 };   /* 날씨·시간대가 정한 안개(�
 function setMood(sky, fogFar, hemiI, sunI) { scene.background.set(sky); scene.fog.color.set(sky); scene.fog.far = fogFar; FOGB.far = fogFar; hemi.intensity = hemiI; sun.intensity = sunI; }
 // ══ 계절·날씨: 봄·여름·가을·겨울(해 높이·하늘·가로수 색·눈 쌓임) + 맑음·비·눈 ══
 const ENV = { season: "summer", weather: "clear", time: "day", snow: 0, wet: 0 };
-const SEASON = { spring: { ko: "봄", date: [3, 15], sky: 0xc5d4e0, hemi: 0.17, sun: 3.3 }, summer: { ko: "여름", date: [6, 15], sky: 0xaec8de, hemi: 0.15, sun: 3.5 },
+const SEASON = { spring: { ko: "봄", date: [4, 5], sky: 0xc5d4e0, hemi: 0.17, sun: 3.3 }, summer: { ko: "여름", date: [6, 15], sky: 0xaec8de, hemi: 0.15, sun: 3.5 },
   autumn: { ko: "가을", date: [9, 20], sky: 0xc9cdd0, hemi: 0.16, sun: 3.1 }, winter: { ko: "겨울", date: [0, 15], sky: 0xd4dae0, hemi: 0.22, sun: 2.6 } };
 let SUN_DIR = null;   // 계절 날짜 14시 해 방향(NOAA 계산식)
 function treeColors() { if (window.__treesGLB) return; const ic = window.__trees && window.__trees[1]; if (!ic) return; const c = new THREE.Color(), s = ENV.season;
@@ -489,9 +489,10 @@ function wayAt(p, L, s, off) {   // 길이 s 지점, 진행 방향 오른쪽으�
     if (w.w >= 6.5) for (const side of [-1, 1]) for (let s = 8; s < T - 8; s += 8) quad(Wt, wayAt(w.p, L, s, side * w.w / 2), wayAt(w.p, L, Math.min(T - 8, s + 3), side * w.w / 2), 0.13); }
   for (const [arr, col] of [[Y, 0xe8b830], [Wt, 0xf2f2ee]]) { if (!arr.length) continue; const g = new THREE.BufferGeometry(); g.setAttribute("position", new THREE.Float32BufferAttribute(arr, 3)); g.computeVertexNormals();
     const m = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color: col, roughness: 0.6, polygonOffset: true, polygonOffsetFactor: -2 })); m.receiveShadow = true; scene.add(m); } }
-// 가로수: 큰길 양쪽 보도에 10m 간격
+// 가로수: 서울시 가로수 위치정보(실제 위치·수종). 자료가 없으면 큰길 양쪽 보도에 10m 간격(가정)
 const TREE_POS = [];
-for (const w of MAJOR) { const L = wayLen(w.p), T = L[L.length - 1];
+if (city.trees && city.trees.length) { for (const [x, y, k] of city.trees) { if (inBuilding(x, y) || nearVia(x, y)) continue; TREE_POS.push({ x, y, k }); } }
+else for (const w of MAJOR) { const L = wayLen(w.p), T = L[L.length - 1];
   for (const side of [-1, 1]) for (let s = 10 + Math.random() * 4; s < T - 10; s += 9 + Math.random() * 3) { const q = wayAt(w.p, L, s, side * (w.w + 1.3));
     if (inBuilding(q.x, q.y) || nearVia(q.x, q.y)) continue; const t = { x: q.x, y: q.y }; if (collide(t, 1.6)) continue; TREE_POS.push(q); } }
 { const trunk = new THREE.CylinderGeometry(0.14, 0.2, 3.2, 14); trunk.translate(0, 1.6, 0);
@@ -714,17 +715,28 @@ loadCarModels().then(models => { const T_ = TRAFFIC; if (!Object.keys(models).le
   for (const sl of slots) if (sl.p) { q.setFromAxisAngle(up, sl.p.h + Math.PI + (sl.p.flip ? Math.PI : 0)); m.compose(V(sl.p.x, sl.p.y, 0), q, one); for (const im of ims[sl.type]) im.setMatrixAt(sl.i, m); }
   T_.glb = { ims, moving: slots.filter(sl => sl.o) }; T_.im.visible = false; window.__carTypes = cnt; window.__traffic = T_; });
 // ══ 가로수 모델(Higgsfield · Meshy 6: 은행나무·느티나무) — 계절은 잎(초록 픽셀)만 골라 색 바꿈, 겨울엔 잎을 지움 ══
-const TREE_T = { ginkgo: { h: 9, share: 0.6, u: { col: { value: new THREE.Color() }, amt: { value: 0 }, bare: { value: 0 } } }, zelkova: { h: 8, share: 0.4, u: { col: { value: new THREE.Color() }, amt: { value: 0 }, bare: { value: 0 } } } };
+// 수종별: 모양(가진 모델 2개 중), 높이, 계절 잎 색 [봄, 가을] (여름은 모델 그대로, 겨울은 잎 지움 — 소나무는 늘푸름)
+//  이팝나무: 5월 초·중순 흰 꽃이 나무를 덮음 · 양버즘나무(플라타너스): 가을 누런 갈색 · 느티나무: 주황·갈색 · 메타세쿼이아: 적갈색 · 은행나무: 노랑
+const TREE_T = {
+  ip: { m: "zelkova", h: 7, sp: [0xeef0e2, 0.72], au: [0xc9a24a, 0.8] },
+  pl: { m: "zelkova", h: 12, sp: [0xa8cf72, 0.7], au: [0xb8913f, 0.85] },
+  ze: { m: "zelkova", h: 10, sp: [0x9cc46a, 0.8], au: [0xc8682e, 0.85] },
+  me: { m: "ginkgo", h: 14, sp: [0x9ccf6a, 0.7], au: [0xb5522a, 0.9] },
+  gi: { m: "ginkgo", h: 10, sp: [0xa9d46f, 0.8], au: [0xf0c020, 0.9] },
+  pi: { m: "ginkgo", h: 6, sp: [0x3f6a3a, 0.6], au: [0x3f6a3a, 0.6], ever: true },
+  ot: { m: "zelkova", h: 6, sp: [0x9cc46a, 0.8], au: [0xc8682e, 0.8] } };
+for (const t of Object.values(TREE_T)) t.u = { col: { value: new THREE.Color() }, amt: { value: 0 }, bare: { value: 0 } };
+for (const p of TREE_POS) if (!p.k) p.k = Math.random() < 0.6 ? "gi" : "ze";
 const TREE_IMS = [];
-function seasonTrees() { const s = ENV.season; for (const im of TREE_IMS) im.castShadow = s !== "winter"; renderer.shadowMap.needsUpdate = true;   // 겨울엔 지운 잎이 그림자를 남기지 않게
-  for (const [k, t] of Object.entries(TREE_T)) { t.u.bare.value = s === "winter" ? 1 : 0; t.u.amt.value = s === "summer" || s === "winter" ? 0 : 0.85;
-    t.u.col.value.set(s === "spring" ? 0x9cc46a : k === "ginkgo" ? 0xf0c020 : 0xd8782e).convertSRGBToLinear(); } }
-Promise.all(Object.keys(TREE_T).map(k => loader.loadAsync(`models/trees/${k}.glb`).then(g => [k, g]).catch(() => null))).then(list => { list = list.filter(Boolean); if (!list.length || !TREE_POS.length) return;
-  const asg = TREE_POS.map(() => Math.random() < TREE_T.ginkgo.share ? "ginkgo" : "zelkova"), m = new THREE.Matrix4(), q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0);
-  for (const [k, g] of list) { const T = TREE_T[k]; g.scene.updateMatrixWorld(true); const parts = [], bb = new THREE.Box3();
+function seasonTrees() { const s = ENV.season; for (const im of TREE_IMS) im.castShadow = s !== "winter" || im.userData.ever; renderer.shadowMap.needsUpdate = true;   // 겨울엔 지운 잎이 그림자를 남기지 않게
+  for (const t of Object.values(TREE_T)) { t.u.bare.value = s === "winter" && !t.ever ? 1 : 0; const c = s === "spring" ? t.sp : s === "autumn" ? t.au : t.ever ? t.sp : null;
+    t.u.amt.value = c ? c[1] : 0; if (c) t.u.col.value.set(c[0]).convertSRGBToLinear(); } }
+Promise.all(["ginkgo", "zelkova"].map(k => loader.loadAsync(`models/trees/${k}.glb`).then(g => [k, g]).catch(() => null))).then(list => { list = list.filter(Boolean); if (!list.length || !TREE_POS.length) return;
+  const G = Object.fromEntries(list), m = new THREE.Matrix4(), q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0);
+  for (const [k, T] of Object.entries(TREE_T)) { const g = G[T.m] || list[0][1]; g.scene.updateMatrixWorld(true); const parts = [], bb = new THREE.Box3();
+    const idx = TREE_POS.map((p, i) => p.k === k ? i : -1).filter(i => i >= 0); if (!idx.length) continue;
     g.scene.traverse(o => { if (o.isMesh) { const geo = o.geometry.clone(); geo.applyMatrix4(o.matrixWorld); geo.computeBoundingBox(); bb.union(geo.boundingBox); parts.push({ geo, mat: o.material }); } });
     const s = T.h / (bb.max.y - bb.min.y), M = new THREE.Matrix4().makeScale(s, s, s).multiply(new THREE.Matrix4().makeTranslation(-(bb.min.x + bb.max.x) / 2, -bb.min.y, -(bb.min.z + bb.max.z) / 2));
-    const idx = asg.map((a, i) => a === k ? i : -1).filter(i => i >= 0); if (!idx.length) continue;
     for (const pt of parts) { pt.geo.applyMatrix4(M); const mat = pt.mat.clone(); mat.userData.snowK = 0.6;
       mat.onBeforeCompile = sh => { sh.uniforms.uLeafCol = T.u.col; sh.uniforms.uLeafAmt = T.u.amt; sh.uniforms.uBare = T.u.bare;
         sh.fragmentShader = "uniform vec3 uLeafCol; uniform float uLeafAmt; uniform float uBare;\n" + sh.fragmentShader.replace("#include <map_fragment>", `#include <map_fragment>
@@ -732,8 +744,8 @@ Promise.all(Object.keys(TREE_T).map(k => loader.loadAsync(`models/trees/${k}.glb
     if (uBare > 0.5 && leaf > 0.35) discard;
     float lum = dot(diffuseColor.rgb, vec3(0.3, 0.59, 0.11)); diffuseColor.rgb = mix(diffuseColor.rgb, uLeafCol * (0.75 + 1.8 * lum), leaf * uLeafAmt); }`); };
       mat.customProgramCacheKey = () => "tree|" + k;
-      const im = new THREE.InstancedMesh(pt.geo, mat, idx.length); im.castShadow = im.receiveShadow = true;
-      idx.forEach((ti, j) => { const p = TREE_POS[ti], sc = 0.8 + ((ti * 0.6180339) % 1) * 0.4; q.setFromAxisAngle(up, ti * 2.399); m.compose(V(p.x, p.y, 0), q, new THREE.Vector3(sc, sc, sc)); im.setMatrixAt(j, m); });
+      const im = new THREE.InstancedMesh(pt.geo, mat, idx.length); im.castShadow = im.receiveShadow = true; im.userData.ever = !!T.ever;
+      idx.forEach((ti, j) => { const p = TREE_POS[ti], sc = 0.85 + ((ti * 0.6180339) % 1) * 0.3; q.setFromAxisAngle(up, ti * 2.399); m.compose(V(p.x, p.y, 0), q, new THREE.Vector3(sc, sc, sc)); im.setMatrixAt(j, m); });
       scene.add(im); TREE_IMS.push(im); } }
   for (const o of window.__trees || []) o.visible = false; window.__treesGLB = true; seasonTrees(); snowify(scene); });
 function makeActor(src, tint, mark) {

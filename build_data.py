@@ -144,8 +144,13 @@ for e in OS:
             if best is None or d < best[0]: best = (d, w["p"][i], w["p"][i + 1])
     ang = math.atan2(best[1] - x, -(best[2] - y)) if best else 0.0
     exits2.append({"ref": e["tags"].get("ref", ""), "st": st["name"], "x": r2(x), "y": r2(y), "ang": round(ang, 3)})
-out = {"stations": stations, "exits2": exits2, "buildings": B, "roads": R, "alleys": [r2(v) for t_ in AL for v in t_], "ways": W_,
+# 가로수: 서울시 가로수 위치정보(OA-23040, 2026판, 정원도시국 조경과) 중 우리 범위 → [x, y, 수종 코드]
+SPK = {"이팝나무": "ip", "양버즘나무": "pl", "느티나무": "ze", "메타세쿼이아": "me", "은행나무": "gi", "소나무": "pi"}
+_TJ = os.path.join(D, "data", "street_trees", "area.json")
+TREES = [[r2(t["x"]), r2(t["y"]), SPK.get(t["s"], "ot")] for t in json.load(open(_TJ, encoding="utf-8"))] if os.path.exists(_TJ) else []
+print("가로수", len(TREES))
+out = {"stations": stations, "trees": TREES, "exits2": exits2, "buildings": B, "roads": R, "alleys": [r2(v) for t_ in AL for v in t_], "ways": W_,
        "ground": {"img": "ground.jpg", "corners": GR["corners"]}, "exits": EX, "viaduct": V,
-       "start": [r2(CX), r2(CY)], "source": "건물: 국토교통부 GIS건물통합정보(빠진 147동은 OpenStreetMap 윤곽·높이 추정) · 도로: OpenStreetMap · 바닥: 국토지리정보원 정사영상 2025"}
+       "start": [r2(CX), r2(CY)], "source": "건물: 국토교통부 GIS건물통합정보(빠진 147동은 OpenStreetMap 윤곽·높이 추정) · 도로: OpenStreetMap · 바닥: 국토지리정보원 정사영상 2025 · 가로수: 서울시 가로수 위치정보 2026"}
 json.dump(out, open(os.path.join(G, "city.json"), "w", encoding="utf-8"), ensure_ascii=False, separators=(",", ":"))
 print("건물", len(B), "도로 삼각형", len(R) // 6, "골목", len(AL), "길", len(W_), round(os.path.getsize(os.path.join(G, "city.json")) / 1e6, 1), "MB")
