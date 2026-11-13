@@ -184,9 +184,18 @@ renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadow
 renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.outputColorSpace = THREE.SRGBColorSpace;
 const scene = new THREE.Scene(); const SKY = new THREE.Color(0xb9c7d3); scene.background = SKY.clone(); scene.fog = new THREE.Fog(0xb9c7d3, 120, 650);
 { const sky = new THREE.Mesh(new THREE.SphereGeometry(2800, 32, 16), new THREE.ShaderMaterial({ side: THREE.BackSide, depthWrite: false, fog: false,
-    uniforms: { top: { value: new THREE.Color(0x6f9ccc) }, bot: { value: new THREE.Color(0xd5dde4) } },
+    uniforms: { top: { value: new THREE.Color(0x6f9ccc) }, bot: { value: new THREE.Color(0xd5dde4) }, uCloud: { value: 0.4 }, uTime: { value: 0 }, uDark: { value: 0 } },
     vertexShader: "varying vec3 p; void main(){ p = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.); }",
-    fragmentShader: "uniform vec3 top; uniform vec3 bot; varying vec3 p; void main(){ float h = clamp(normalize(p).y * 2.2, 0., 1.); gl_FragColor = vec4(mix(bot, top, pow(h, .7)), 1.); }" }));
+    fragmentShader: `uniform vec3 top; uniform vec3 bot; uniform float uCloud; uniform float uTime; uniform float uDark; varying vec3 p;
+      float hs(vec2 q){ return fract(sin(dot(q, vec2(127.1, 311.7))) * 43758.5453); }
+      float ns(vec2 q){ vec2 i = floor(q), f = fract(q); f = f * f * (3. - 2. * f); return mix(mix(hs(i), hs(i + vec2(1, 0)), f.x), mix(hs(i + vec2(0, 1)), hs(i + vec2(1, 1)), f.x), f.y); }
+      float fbm(vec2 q){ float a = .5, s = 0.; for (int i = 0; i < 5; i++) { s += a * ns(q); q = q * 2.03 + 7.1; a *= .5; } return s; }
+      void main(){ vec3 d = normalize(p); float h = clamp(d.y * 2.2, 0., 1.); vec3 col = mix(bot, top, pow(h, .7));
+        if (d.y > 0.02) { vec2 uv = d.xz / (d.y + 0.14) * 1.25 + vec2(uTime * .004, uTime * .0015); float n = fbm(uv), n2 = fbm(uv * 2.7 + 3.1);   /* 구름: 낮게 깔린 층 하나, 천천히 흐름 */
+          float th = 0.78 - uCloud * 0.5, c = smoothstep(th, th + 0.2, n + n2 * 0.18) * smoothstep(0.02, 0.2, d.y);
+          vec3 cc = mix(vec3(1.0), vec3(.6, .64, .7), smoothstep(th + 0.05, th + 0.45, n) * .7 + uCloud * .3); cc = mix(cc, bot * 1.15, 0.22) * (1. - uDark * .82);
+          col = mix(col, cc, c * (0.92 - uDark * 0.25)); }
+        gl_FragColor = vec4(col, 1.); }` }));
   sky.renderOrder = -1; window.__sky = sky; }
 const camera = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.3, 3000);
 addEventListener("resize", () => { renderer.setSize(innerWidth, innerHeight); if (window.__comp) window.__comp.setSize(innerWidth, innerHeight); camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); });
@@ -211,6 +220,7 @@ function treeColors() { if (window.__treesGLB) return; const ic = window.__trees
   if (ic.instanceColor) ic.instanceColor.needsUpdate = true; }
 function applyEnv() { snowify(scene); const se = SEASON[ENV.season], w = ENV.weather;
   const sp = sunPos(new Date(2026, se.date[0], se.date[1]), 14); SUN_DIR = new THREE.Vector3(Math.sin(sp.az) * Math.cos(sp.alt), Math.max(0.08, Math.sin(sp.alt)), -Math.cos(sp.az) * Math.cos(sp.alt));
+  if (window.__sky && window.__sky.material.uniforms.uCloud) window.__sky.material.uniforms.uCloud.value = w === "clear" ? (ENV.overcast ? 0.9 : ENV.season === "autumn" ? 0.28 : 0.42) : 1.0;   // 구름 양: 맑음 조금, 흐림·비·눈 가득
   const oc = w === "clear" && ENV.overcast, sky = w === "rain" ? 0x8e979f : w === "snow" ? 0xc3cad1 : oc ? 0xb4bac0 : se.sky;   // oc: 흐림(지금 날씨에서만)
   setMood(sky, w === "clear" ? (oc ? 520 : 650) : w === "rain" ? 380 : 320, w === "clear" ? (oc ? 0.34 : se.hemi) : 0.42, w === "clear" ? (oc ? 1.3 : se.sun) : w === "rain" ? 0.7 : 1.0);
   timeEnv();
@@ -266,7 +276,11 @@ function glowFor(m) {   // 창유리: 2.6×3m 칸마다 무작위로 불 켜짐,
     float fy = fract(vTW.y / 3.0), fx = fract((abs(vTN.x) > 0.5 ? vTW.z : vTW.x) / 2.6);   // 칸 안 위치
     float shade = h2 > 0.5 ? mix(0.45, 1.0, smoothstep(0.15, 0.75, fy)) : 0.75 + 0.25 * step(0.5, fract(fy * 9.0));   // 커튼(아래가 어두움) 또는 블라인드 줄
     shade *= mix(0.55, 1.0, smoothstep(0.0, 0.5, abs(fx - 0.5) * 2.0 + h2 * 0.5));
-    totalEmissiveRadiance += uNight * lit * warm * shade * ${shop ? "1.5" : "(0.35 + fract(hh * 13.7) * 0.5)"}; }`); };
+    totalEmissiveRadiance += uNight * lit * warm * shade * ${shop ? "1.5" : "(0.35 + fract(hh * 13.7) * 0.5)"};
+    float dayK = 1.0 - uNight; vec3 ref = mix(vec3(0.10, 0.13, 0.17), vec3(0.42, 0.55, 0.68), smoothstep(0.05, 0.95, fy)) * (0.75 + 0.25 * fract(hh * 7.3));   // 낮: 유리에 비친 하늘(위쪽이 밝음)
+    ${shop ? "float mul = step(0.035, fract(fx * 2.0)) * step(0.03, fy) * (1.0 - step(0.86, fy) * 0.55); ref = mix(vec3(0.05), ref * 0.8 + vec3(0.16, 0.13, 0.09) * (1.0 - fy), mul);" : "ref = mix(ref, vec3(0.62, 0.6, 0.55) * (0.55 + 0.25 * fy), step(0.72, h2) * step(fract(hh * 3.1), 0.8) * smoothstep(0.3, 0.34, fy + h2 * 0.4 - 0.3));"}
+    float frame = ${shop ? "1.0" : "step(0.03, fx) * step(fx, 0.97) * step(0.03, fy) * (1.0 - step(0.485, fx) * step(fx, 0.515) * 0.7)"};   // 창틀·가운데 창살
+    totalEmissiveRadiance += dayK * ref * frame * 0.42; }`); };
   m.customProgramCacheKey = () => (key ? key.call(m) : "") + "|glow" + (shop ? "S" : "W"); m.needsUpdate = true; }
 const LAMP_GLOW = { pools: null, heads: null };
 function timeEnv() {   // applyEnv 안에서 부름: 해·하늘·빛을 시간대에 맞춤
@@ -282,6 +296,7 @@ function timeEnv() {   // applyEnv 안에서 부름: 해·하늘·빛을 시간�
   sun.color.setHex(sunCol); NIGHT_U.value = night; envDim(t === "night" ? 0.05 : t === "dusk" ? 0.3 : 0.55);
   if (window.__signMat) window.__signMat.emissiveIntensity = 0.12 + 1.2 * night;
   if (LAMP_GLOW.pools) { LAMP_GLOW.pools.visible = LAMP_GLOW.heads.visible = night > 0.3; LAMP_GLOW.pools.material.uniforms.uA.value = night; }
+  if (u && u.uDark) u.uDark.value = night;
   if (window.__bloom) { window.__bloom.enabled = night > 0.3; window.__bloom.strength = 0.3 * night; window.__bloom.threshold = 0.92; }
   renderer.shadowMap.needsUpdate = true; }
 // 버튼
@@ -2398,7 +2413,7 @@ function frame(fixed) {
     if (sc.right !== ext) { sc.left = -ext; sc.right = ext; sc.top = ext; sc.bottom = -ext; sc.far = wide ? 1600 : 500; sc.updateProjectionMatrix(); sun.shadow.mapSize.set(wide ? 4096 : 2048, wide ? 4096 : 2048); if (sun.shadow.map) { sun.shadow.map.dispose(); sun.shadow.map = null; } }
     const fc = fly ? new THREE.Vector3(camera.position.x, 0, camera.position.z) : tgt, sp = S && S.sp && S === SC.sun ? S.sp : null;
     if (sp) sun.position.set(fc.x + Math.sin(sp.az) * Math.cos(sp.alt) * 600, Math.max(5, Math.sin(sp.alt) * 600), fc.z - Math.cos(sp.az) * Math.cos(sp.alt) * 600); else if (SUN_DIR) sun.position.set(fc.x + SUN_DIR.x * 600, SUN_DIR.y * 600, fc.z + SUN_DIR.z * 600); else sun.position.set(fc.x - 120 * (wide ? 3 : 1), 160 * (wide ? 3 : 1), fc.z + 80 * (wide ? 3 : 1));
-    sun.target.position.copy(fc); shT += dt || 0.016; if (shT > 0.25 || shP.distanceToSquared(sun.position) > 1) { renderer.shadowMap.needsUpdate = true; shT = 0; shP.copy(sun.position); } } MK_ME.visible = air && !(S && S.air); { const cpos = camera.position; for (const sp of FAC_SPR) { sp.visible = FAC_ON && (air || fly) && !(S && S.pano); const d = cpos.distanceTo(sp.position); sp.scale.setScalar(Math.max(6, d * 0.045)); sp.position.y = air ? Math.max(22, d * 0.04) : 22; } } { const k = air || fly ? Math.min(4.5, Math.max(1, (air ? dist : camera.position.y) / 45)) : 1; PS.set(k, k, k); }
+    sun.target.position.copy(fc); shT += dt || 0.016; if (shT > 0.25 || shP.distanceToSquared(sun.position) > 1) { renderer.shadowMap.needsUpdate = true; shT = 0; shP.copy(sun.position); } } MK_ME.visible = air && !(S && S.air); if (window.__sky && window.__sky.material.uniforms.uTime) window.__sky.material.uniforms.uTime.value = performance.now() / 1000; { const cpos = camera.position; for (const sp of FAC_SPR) { sp.visible = FAC_ON && (air || fly) && !(S && S.pano); const d = cpos.distanceTo(sp.position); sp.scale.setScalar(Math.max(6, d * 0.045)); sp.position.y = air ? Math.max(22, d * 0.04) : 22; } } { const k = air || fly ? Math.min(4.5, Math.max(1, (air ? dist : camera.position.y) / 45)) : 1; PS.set(k, k, k); }
     if (running && air && !fly && !(S && S.pano)) { const h = Math.max(0, camera.position.y), cl = ENV.weather === "clear";   /* 항공 보기: 안개를 카메라 높이만큼 뒤로 밀어 저녁·비·눈에도 동네가 보이게(날씨 느낌은 먼 곳에만) */
       scene.fog.near = Math.max(FOGB.near, h * (cl ? 1.6 : 1.0)); scene.fog.far = Math.max(FOGB.far, h * (cl ? 10 : 4.5) + 300); }
     else if (running && !fly && !(S && S.pano)) { scene.fog.near = FOGB.near; scene.fog.far = FOGB.far; }
