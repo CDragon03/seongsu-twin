@@ -1503,6 +1503,20 @@ const DEM = await fetch("data/dem.json").then(r => r.json()).catch(() => null);
 function demZ(x, y) { if (!DEM) return 0; const fx = (x - DEM.x0) / DEM.step, fy = (y - DEM.y0) / DEM.step, i = Math.max(0, Math.min(DEM.nx - 2, Math.floor(fx))), j = Math.max(0, Math.min(DEM.ny - 2, Math.floor(fy))), u = Math.min(1, Math.max(0, fx - i)), v = Math.min(1, Math.max(0, fy - j)), z = DEM.z, w = DEM.nx;
   return z[j * w + i] * (1 - u) * (1 - v) + z[j * w + i + 1] * u * (1 - v) + z[(j + 1) * w + i] * (1 - u) * v + z[(j + 1) * w + i + 1] * u * v; }
 const FLOOD_TH = [[0.5, 0x1d3e79, "50cm↑ 걷기 위험"], [0.3, 0x116eb5, "30cm↑ 차량 통행 곤란"], [0.15, 0x3295d2, "15cm↑ 보행 불편"]];
+// 서울시 침수흔적도(실제로 잠겼던 필지) — 깊이별 색, 연도 고르기, 모형과 비교
+const TRACE_C = d => d >= 0.5 ? 0xe0483a : d >= 0.3 ? 0xf29a3a : 0xf2d24b;
+let TRACES = null; fetch("data/flood_traces.json").then(r => r.json()).then(j => { TRACES = j; }).catch(() => {});
+function traceLayer(year) {   // 반투명 기둥(높이 = 침수 깊이 × 4, 보이게 과장) + 테두리
+  const g = new THREE.Group(); if (!TRACES) return g;
+  for (const f of TRACES.features) { if (year !== "all" && f.y !== year) continue;
+    for (const ring of f.r) { if (ring.length < 6) continue; const sh = new THREE.Shape(); for (let i = 0; i < ring.length; i += 2) (i ? sh.lineTo : sh.moveTo).call(sh, ring[i], ring[i + 1]);
+      const geo = new THREE.ExtrudeGeometry(sh, { depth: Math.max(0.6, f.d * 4), bevelEnabled: false }); geo.rotateX(-Math.PI / 2); geo.translate(0, 0.3, 0);
+      const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: TRACE_C(f.d), transparent: true, opacity: 0.55, depthWrite: false })); m.renderOrder = 4; m.userData.f = f; g.add(m);
+      const e = new THREE.LineSegments(new THREE.EdgesGeometry(geo), new THREE.LineBasicMaterial({ color: TRACE_C(f.d) })); g.add(e); }
+    const c = traceCenter(f), top = Math.max(18, heightAt(c.x, c.y) + 8), pin = new THREE.Mesh(new THREE.CylinderGeometry(1.1, 1.1, top, 10), new THREE.MeshBasicMaterial({ color: TRACE_C(f.d) }));   // 건물 위로 보이는 표시 기둥
+    pin.position.copy(V(c.x, c.y, top / 2)); g.add(pin); const ball = new THREE.Mesh(new THREE.SphereGeometry(4.2, 16, 10), new THREE.MeshBasicMaterial({ color: TRACE_C(f.d) })); ball.position.copy(V(c.x, c.y, top)); g.add(ball); }
+  return g; }
+function traceCenter(f) { const r = f.r[0]; let x = 0, y = 0; for (let i = 0; i < r.length; i += 2) { x += r[i]; y += r[i + 1]; } return { x: x / (r.length / 2), y: y / (r.length / 2) }; }
 SC.flood = { hp: false, air: true, tools: "강우량·배수 능력을 바꾸면 낮은 곳부터 물이 찹니다 · 건물을 누르면 그 자리 물 깊이",
   init() { if (!DEM) { msg("지형 자료(dem.json)를 못 읽었습니다", 3); return; }
     this.rain = 100; this.drain = 75; this.mps = 5; this.t = 0; this.V = 0; this.L = 0; this.hit = new Map();
@@ -1519,12 +1533,21 @@ SC.flood = { hp: false, air: true, tools: "강우량·배수 능력을 바꾸면
       <div class="cr"><span>속도</span><select id="f_s"><option value="1">1초 = 1분</option><option value="5" selected>1초 = 5분</option><option value="15">1초 = 15분</option></select></div>
       <div class="cr"><button id="f_p" class="btn2">비 그침</button><button id="f_x" class="btn2">다시</button></div>
       <div class="lg">${FLOOD_TH.map(([d, c, t]) => `<span><i style="background:${hex6(c)}"></i>${t}</span>`).join("")}</div>
+      <div class="cr"><label class="ck"><input id="f_tr" type="checkbox" checked> 서울시 실제 침수 흔적</label><select id="f_ty"><option value="all">전체 연도</option><option>2010</option><option>2011</option><option>2012</option><option>2014</option><option>2022</option></select></div>
+      <div class="cr"><button id="f_go" class="btn2">흔적 쪽 보기</button></div>
+      <div class="lg"><span><i style="background:#f2d24b"></i>0.1m</span><span><i style="background:#f29a3a"></i>0.3m</span><span><i style="background:#e0483a"></i>0.5m 이상</span></div>
       <div id="f_info" class="note"></div>
+      <div class="note">실제 흔적: 서울특별시 침수흔적도(서울 열린데이터광장, 공공누리 1유형) — 실제로 잠겼던 필지와 깊이입니다. 기둥 높이는 깊이를 4배로 과장해 보여 줍니다.</div>
       <div class="note">지형은 공개 30m급 지형 타일(SRTM 등)을 평활해 썼고 건물 높이가 섞여 수 m 오차가 있습니다. 배수 능력을 넘는 비만 쌓이고, 쌓인 물은 낮은 곳부터 차며 30분 시간 상수로 하천·하수로 빠진다고 본 <b>가정</b>입니다(하수관·한강 수위·지하 공간은 넣지 않음). 깊이 기준도 안내용 가정값입니다.</div>`);
     $("f_r").oninput = e => { this.rain = +e.target.value; $("f_rv").textContent = this.rain + " mm"; }; $("f_d").oninput = e => { this.drain = +e.target.value; $("f_dv").textContent = this.drain + " mm/h"; };
     $("f_s").onchange = e => this.mps = +e.target.value; $("f_p").onclick = () => { this.stop = !this.stop; $("f_p").textContent = this.stop ? "비 다시" : "비 그침"; }; $("f_x").onclick = () => this.reset();
     this.ch = new LiveChart([{ label: "가장 깊은 곳(cm)", color: "#3295d2", unit: "cm" }, { label: "30cm↑ 건물", color: "#e0483a", y2: true, fill: false, unit: "동" }], { h: 160, xt: "경과(분)" });
     for (let i = 0; i < 60; i++) spawnWalker({ rmax: 200 });
+    const showTr = () => { if (this.tr) scene.remove(this.tr); const y = $("f_ty").value; this.tr = $("f_tr").checked ? traceLayer(y) : null; if (this.tr) { scene.add(this.tr); extra.push(this.tr); }
+      this.trList = TRACES ? TRACES.features.filter(f => y === "all" || f.y === y) : []; this.acc = 1; };
+    $("f_tr").onchange = showTr; $("f_ty").onchange = showTr;
+    $("f_go").onclick = () => { const L = (this.trList || []).filter(f => /성수/.test(f.z)), P = (L.length ? L : this.trList || []).map(traceCenter); if (!P.length) return; player.x = P.reduce((a, p) => a + p.x, 0) / P.length; player.y = P.reduce((a, p) => a + p.y, 0) / P.length; dist = 560; };
+    this.tr = null; this.trList = []; setTimeout(showTr, TRACES ? 0 : 1200);
     this.dist0 = 480; dist = 480; this.reset(); },
   reset() { if (this.ch) this.ch.reset(); this.lastC = -1; for (const b of this.hit.keys()) paint(b, null); this.hit.clear(); this.t = 0; this.V = 0; this.L = this.zmin - 0.01; this.stop = false; this.mesh(); },
   level(V) { const A = this.S * this.S, z = this.sorted; let lo = this.zmin, hi = this.zmin + 15; for (let k = 0; k < 40; k++) { const m = (lo + hi) / 2; let v = 0; for (let i = 0; i < z.length && z[i] < m; i++) v += (m - z[i]) * A; if (v < V) lo = m; else hi = m; } return lo; },
@@ -1540,10 +1563,10 @@ SC.flood = { hp: false, air: true, tools: "강우량·배수 능력을 바꾸면
     this.acc = (this.acc || 0) + dt; if (this.acc > 0.25) { this.acc = 0; this.L = this.level(this.V); this.mesh();
       let n = [0, 0, 0]; for (const b of B) { if (Math.hypot(b.cx - player.x, b.cy - player.y) > 900) continue; const d = this.depth(b.cx, b.cy), g = FLOOD_TH.findIndex(([t]) => d >= t);
         const was = this.hit.get(b); if (g >= 0) { n[g]++; if (was !== g) { this.hit.set(b, g); paint(b, FLOOD_TH[g][1]); } } else if (was != null) { this.hit.delete(b); paint(b, null); } }
-      this.cnt = n; if (this.ch && Math.floor(this.t / 5) !== this.lastC) { this.lastC = Math.floor(this.t / 5); this.ch.push(Math.round(this.t), [Math.max(0, this.L - this.zmin) * 100, n[0] + n[1]]); } }
+      this.cnt = n; this.trHit = (this.trList || []).filter(f => { const c = traceCenter(f); return this.depth(c.x, c.y) >= 0.1; }).length; if (this.ch && Math.floor(this.t / 5) !== this.lastC) { this.lastC = Math.floor(this.t / 5); this.ch.push(Math.round(this.t), [Math.max(0, this.L - this.zmin) * 100, n[0] + n[1]]); } }
     for (const w of NPC) { const d = this.depth(w.x, w.y); w.mode = d > 0.15 ? "flee" : "walk"; w.from_ = { x: w.x, y: w.y - 50 }; stepWalker(w, dt, d > 0.3 ? w.sp * 0.5 : w.sp); collide(w, 0.35); w.z = 0; showActor(w, true, dt, 1); }
     const c = this.cnt || [0, 0, 0], hh = Math.floor(this.t / 60), mm = Math.floor(this.t % 60);
-    setRows([["경과", `${hh}시간 ${mm}분`], ["쌓인 물", Math.round(this.V).toLocaleString() + " m³"], ["가장 깊은 곳", Math.max(0, this.L - this.zmin).toFixed(2) + " m"], ...FLOOD_TH.map(([, , t], i) => [t + " 건물", c[i] + "동"])]);
+    setRows([["경과", `${hh}시간 ${mm}분`], ["실제 흔적 중 모형도 잠김", `${this.trHit || 0} / ${(this.trList || []).length}곳`], ["쌓인 물", Math.round(this.V).toLocaleString() + " m³"], ["가장 깊은 곳", Math.max(0, this.L - this.zmin).toFixed(2) + " m"], ...FLOOD_TH.map(([, , t], i) => [t + " 건물", c[i] + "동"])]);
     $("goal").textContent = `집중호우 · 시간당 ${this.rain}mm · 배수 ${this.drain}mm/h` + (this.rain <= this.drain && !this.stop ? " · 배수 능력 안이라 물이 안 쌓임" : ""); },
   marks() { return [...this.hit].map(([b, g]) => [b.cx, b.cy, hex6(FLOOD_TH[g][1]), 3.5]); } };
 
