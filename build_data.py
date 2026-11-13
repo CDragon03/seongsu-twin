@@ -61,7 +61,7 @@ for _i, _b in enumerate(B):
         for gy in range(int(min(_ys) // 20), int(max(_ys) // 20) + 1): _grid.setdefault((gx, gy), []).append(_i)
 _cov = lambda x, y: any(_inside(B[i]["p"], x, y) for i in _grid.get((int(x // 20), int(y // 20)), []))
 _X0, _X1 = min(v for b in B for v in b["p"][0::2]), max(v for b in B for v in b["p"][0::2]); _Y0, _Y1 = min(v for b in B for v in b["p"][1::2]), max(v for b in B for v in b["p"][1::2])
-_add = 0
+_add = 0; _XT = []
 for e in json.load(open(os.path.join(D, "data", "osm.json"), encoding="utf-8"))["elements"]:
     t = e.get("tags", {})
     if "building" not in t or "geometry" not in e or t.get("building") == "train_station": continue
@@ -82,7 +82,13 @@ for e in json.load(open(os.path.join(D, "data", "osm.json"), encoding="utf-8"))[
     nb = {"p": [r2(v) for q in P for v in q], "h": h, "f": fl, "c": random.choice(PAL[k]), "k": k, "y": 0, "o": 1}
     if t.get("name"): nb["n"] = t["name"]
     B.append(nb); _add += 1
+    u = "공동주택" if bt == "apartments" else "단독주택" if bt in ("house", "residential") else "공장" if bt in ("industrial", "warehouse") else "교육연구시설" if bt in ("school", "university") else "종교시설" if bt in ("church",) else "제2종근린생활시설" if bt in ("commercial", "retail") else "업무시설"
+    _XT.append({"id": "osm_%s" % e["id"], "geometry": e["geometry"], "tags": {"official_height": h, "official_floors": fl, "use": u,
+        "structure": "일반철골구조" if u == "공장" else "철근콘크리트구조", "official_addr": t.get("name") or "OSM %s" % e["id"], "official_src": "OSM"}})
 print("OSM 로 채운 건물", _add)
+# 블렌더 상세 모델용(build_styled.py 입력): data_extra/official_twin.json = OSM 건물 + 연무장길(중심 계산용)
+_XD = os.path.join(D, "data_extra"); os.makedirs(_XD, exist_ok=True)
+json.dump({"elements": _XT + [e for e in els if e["tags"].get("name") == "연무장길"]}, open(os.path.join(_XD, "official_twin.json"), "w", encoding="utf-8"), ensure_ascii=False)
 # 도로 띠(폭 = road_widths.json, 보도 포함) → 삼각형
 RW = json.load(open(os.path.join(D, "data", "road_widths.json")))
 dflt = {"primary": 14, "secondary": 12, "tertiary": 10, "residential": 7, "unclassified": 6, "service": 4, "footway": 2, "pedestrian": 4}
