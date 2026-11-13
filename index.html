@@ -1209,6 +1209,9 @@ const SC = {};
 // 1 좀비
 // 좀비는 가장 가까운 사람(나 또는 시민, 60m 안)을 찾아가 공격, 물린 시민은 2초 뒤 좀비가 됨
 // ══ 시뮬레이션 공통: 건물 ↔ 상세 모델 연결, 칠하기·무너뜨리기, 건물 고르기(클릭), 조작판, 부드러운 연기·불 입자 ══
+// 성동구 공장현황(주소를 좌표로 찾은 곳만)을 건물에 붙임: b.fac = { n: 공장 수, kind: 대표 업종, prod: 생산품 }
+READY.then(() => { for (const [x, y, n, kind, prod] of (city.official && city.official.fac) || []) { let b = bAt(x, y); if (!b) { let bd = 15; for (const q of B) { const d = Math.hypot(q.cx - x, q.cy - y); if (d < bd) { bd = d; b = q; } } }
+    if (b) { if (b.fac) b.fac.n += n; else b.fac = { n, kind, prod }; } } window.__facN = B.filter(b => b.fac).length; });
 function coverLeftovers() {   // 아직 모델 없는 건물이 모델 있는 건물과 겹치면(같은 윤곽이 두 번 들어간 것 등) 상자를 숨김 — 겹친 쪽 모델이 대신 보임
   const has = b => (b.parts && b.parts.length) || (b.meshes && b.meshes.length), inP = (p, x, y) => { let c = false; for (let i = 0, j = p.length - 2; i < p.length; j = i, i += 2) if ((p[i + 1] > y) !== (p[j + 1] > y) && x < p[i] + (y - p[i + 1]) * (p[j] - p[i]) / (p[j + 1] - p[i + 1])) c = !c; return c; };
   let n = 0; for (const b of B) { if (has(b) || LM_NAMES.has(b.n)) continue;
@@ -1340,6 +1343,7 @@ SC.fire = { hp: false, air: true, bigShadow: false, tools: "건물을 눌러 발
       <div class="cr"><span>풍속</span><input id="c_ws" type="range" min="0" max="12" step="1" value="3"><b id="c_wsv">3 m/s</b></div>
       <div class="cr"><span>속도</span><select id="c_sp"><option value="0.5">1초 = 30초</option><option value="1" selected>1초 = 1분</option><option value="3">1초 = 3분</option></select></div>
       <div class="cr"><button id="c_pause" class="btn2">일시정지</button><button id="c_reset" class="btn2">다시</button></div>
+      <div class="note"><b>공장 위치</b> · 「서울특별시 성동구 공장현황」(2026-07-24, 918곳) 중 주소로 위치가 확인된 곳만 건물에 표시(미니맵 갈색 점). 주소 481곳 중 123곳만 찾아 일부입니다. 공장이라고 불이 더 잘 번지게 하지는 않았습니다(근거 자료 없음).</div>
       <div class="note"><b>실제 통계</b> · 서울 2019~2023년 2월 화재 중 부주의 58.6%, 7~8월 화재의 26.1%가 전기적 요인(서울시 소방재난본부). 원인·장소별 원자료: 소방청 연간화재통계(공공데이터포털) · 서울시 원인별 화재발생(서울 열린데이터광장).</div>
       <div class="note">건물을 누르면 그 건물에서 불이 시작됩니다. 옮겨붙는 확률·타는 시간은 건물 구조와 간격·바람으로 정한 <b>가정</b>입니다(실측·공식 모형 아님).</div>`);
     $("c_wd").onchange = e => this.wdir = +e.target.value; $("c_ws").oninput = e => { this.ws = +e.target.value; $("c_wsv").textContent = this.ws + " m/s"; };
@@ -1350,7 +1354,7 @@ SC.fire = { hp: false, air: true, bigShadow: false, tools: "건물을 눌러 발
     this.reset(c); },
   reset(b0) { for (const b of [...this.burn.keys(), ...this.done]) { paint(b, null); if (b.useBox) { b.useBox = false; b.hs = 1; b.tint = null; showB(b, true); } }
     this.burn.clear(); this.done.clear(); this.min = 0; this.acc = 0; this.lastM = -1; if (this.ch) this.ch.reset(); cityDirty = true; SMOKE2.clear(); FLAME.clear(); this.first = b0; this.ignite(b0);
-    player.x = b0.cx; player.y = b0.cy; collide(player, 0.45); msg(`발화: ${KIND_KO[b0.k] || ""} ${b0.f}층 · ${yrTxt(b0)}`, 2.5); },
+    player.x = b0.cx; player.y = b0.cy; collide(player, 0.45); msg(`발화: ${KIND_KO[b0.k] || ""} ${b0.f}층 · ${yrTxt(b0)}` + (b0.fac ? ` · 등록 공장 ${b0.fac.n}곳(${b0.fac.kind})` : ""), 3.5); },
   onPick(b) { if (b) this.reset(b); },
   ignite(b) { if (!b || this.burn.has(b) || this.done.has(b)) return; this.burn.set(b, { I: 0.05, t: 0 }); },
   gap(a, b) {   // 두 건물 바닥 윤곽 사이 가장 가까운 거리(m)
@@ -1383,10 +1387,10 @@ SC.fire = { hp: false, air: true, bigShadow: false, tools: "건물을 눌러 발
     for (const w of NPC) { w.mode = nearF && Math.hypot(nearF.cx - w.x, nearF.cy - w.y) < 50 ? "flee" : "walk"; w.from_ = nearF ? { x: nearF.cx, y: nearF.cy } : null; stepWalker(w, dt, w.mode === "flee" ? w.sp * 2 : w.sp); collide(w, 0.35); showActor(w, true, dt, w.mode === "flee" ? 2 : 1); }
     const area = [...this.burn.keys(), ...this.done].reduce((s, b) => s + b.area, 0);
     if (this.ch && Math.floor(this.min) !== this.lastM) { this.lastM = Math.floor(this.min); this.ch.push(this.lastM, [this.burn.size, this.done.size, area / 1000]); }
-    setRows([["경과", `${Math.floor(this.min)}분`], ["타는 중", this.burn.size + "동"], ["다 탄 건물", this.done.size + "동"], ["피해 바닥면적", Math.round(area).toLocaleString() + " m²"]]);
+    setRows([["경과", `${Math.floor(this.min)}분`], ["타는 중", this.burn.size + "동"], ["다 탄 건물", this.done.size + "동"], ["피해 바닥면적", Math.round(area).toLocaleString() + " m²"], ["불탄·타는 건물의 등록 공장", [...this.burn.keys(), ...this.done].reduce((a, b) => a + (b.fac ? b.fac.n : 0), 0) + "곳"]]);
     $("goal").textContent = `화재 확산 · ${DIRS.find(d => d[1] === this.wdir)[0]}풍 ${this.ws} m/s` + (this.burn.size ? "" : " · 불이 모두 꺼졌습니다");
   },
-  puffs: [SMOKE2, FLAME], marks() { return [...this.burn.keys()].map(b => [b.cx, b.cy, "#ff7a1a", 5]).concat([...this.done].map(b => [b.cx, b.cy, "#3a3532", 4])); } };
+  puffs: [SMOKE2, FLAME], marks() { return B.filter(b => b.fac && !this.burn.has(b) && !this.done.has(b)).map(b => [b.cx, b.cy, "#b58a4a", 3]).concat([...this.burn.keys()].map(b => [b.cx, b.cy, "#ff7a1a", 5]), [...this.done].map(b => [b.cx, b.cy, "#3a3532", 4])); } };   // 갈색 점 = 등록 공장이 있는 건물
 
 // ── 2. 지진 ──
 // 내진설계 의무 대상(건축법 시행령 제32조 연혁, 블로그 정리 자료 기준·법령 원문 확인 필요): 1988~ 6층 이상, 2005~ 3층 이상, 2017~ 2층 이상
