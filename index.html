@@ -316,7 +316,7 @@ COMP.addPass(GTAO); { const BL = new UnrealBloomPass(new THREE.Vector2(innerWidt
 addEventListener("keydown", e => { if (e.code === "KeyQ" && !e.repeat && document.activeElement.tagName !== "INPUT") { AO_ON = !AO_ON; msg("그늘 효과(AO) " + (AO_ON ? "켬" : "끔"), 1.2); } }); renderer.shadowMap.autoUpdate = false; let shT = 0; const shP = new THREE.Vector3();   // 그림자는 0.25초마다 또는 해·시점이 움직일 때만 다시 그림
 const city = await (await fetch("data/city.json")).json();
 const B = city.buildings;
-for (const b of B) { let sx = 0, sy = 0; const n = b.p.length / 2; for (let i = 0; i < b.p.length; i += 2) { sx += b.p[i]; sy += b.p[i + 1]; } b.cx = sx / n; b.cy = sy / n; b.hs = 1; b.gone = false; b.tint = null; }
+B.forEach((b, i) => { b.ix = i; }); for (const b of B) { let sx = 0, sy = 0; const n = b.p.length / 2; for (let i = 0; i < b.p.length; i += 2) { sx += b.p[i]; sy += b.p[i + 1]; } b.cx = sx / n; b.cy = sy / n; b.hs = 1; b.gone = false; b.tint = null; }
 const centerOf = name => { const L = B.filter(b => b.n === name); return L.length ? { x: L.reduce((s, b) => s + b.cx, 0) / L.length, y: L.reduce((s, b) => s + b.cy, 0) / L.length } : null; };
 const DAELIM = centerOf("대림창고"), HAUS = centerOf("하우스 노웨어 서울"), KOLON = centerOf("서울숲 코오롱디지털타워1차");
 
@@ -375,6 +375,7 @@ for (const b of B) { const s = new THREE.Shape(); for (let i = 0; i < b.p.length
   const g = new THREE.ShapeGeometry(s); g.rotateX(-Math.PI / 2); g.deleteAttribute("uv"); g.deleteAttribute("normal"); b.roof = g.index ? g.toNonIndexed() : g; }
 let wallMesh = null, roofMesh = null, WALLS = [];
 let MODEL_LINKED = false; let FAR_OK = false; let EXTRA_OK = false; let DETAIL_OK = false; const DETAIL_C = [65.33, -27.7], DETAIL_R = 300;   // city_detail.glb: 블렌더 건물(창·발코니·옥상설비) 연무장길 중심 300m
+const E2_IDX = new Set([70, 116, 249, 842, 1436, 1727, 1914, 2089, 2517, 3661, 3788]), COVERED_IDX = [218, 362, 491, 492, 568, 581, 677, 912, 986, 1001, 1112, 1113, 1382, 1407, 1658, 1785, 2144, 2211, 2267, 2284, 2398, 2531, 2569, 3266];   // city.json 건물 순서 기준(전체 불러온 상태에서 2026-11-16 뽑음). city.json 을 다시 만들면 다시 뽑아야 함
 const LM_NAMES = new Set(["대림창고", "하우스 노웨어 서울", "서울숲 코오롱디지털타워1차", "무신사 캠퍼스 N1", "무신사 캠퍼스 E1"]); let LM_OK = false;
 const GRID = new Map(), GS = 20, key = (i, j) => i * 100000 + j;
 const col = new THREE.Color();
@@ -777,7 +778,7 @@ try { const lm = await loader.loadAsync("models/landmarks.glb"); lm.scene.traver
 catch (e) { console.warn("landmarks.glb", e); }
 try { $("load").textContent = "성수동 상세 건물 불러오는 중…"; $("load").style.display = "flex";
   const cd = await loader.loadAsync("models/city_detail.glb");
-  const SHARED_TEX = {}; cd.scene.traverse(o => { if (o.isMesh) for (const m of [].concat(o.material)) { const k = (m.name || "").replace(/\.\d+$/, ""); if (m.map && !SHARED_TEX[k]) SHARED_TEX[k] = { map: m.map, normalMap: m.normalMap, normalScale: m.normalScale.clone() }; } });   // 벽 그림(벽돌·콘크리트)은 이 파일에만 있음 → 뒤 파일들이 이름으로 가져다 씀
+  const SHARED_TEX = {}; cd.scene.traverse(o => { if (o.isMesh) for (const m of [].concat(o.material)) { const k = (m.name || "").replace(/\.\d+$/, ""); if (m.map && !SHARED_TEX[k]) SHARED_TEX[k] = { m, normalScale: m.normalScale.clone() }; } });   // 벽 그림(벽돌·콘크리트)은 이 파일에만 있음 → 뒤 파일들이 이름으로 가져다 씀
   // 블렌더 절차 재질(색·때)은 glTF 로 안 넘어와 하얗게 보임 → 재질 이름으로 렌더와 비슷한 색을 다시 입힘
   const TINT = { "벽_brick": 0xa86f58, "벽_concrete": 0xbdb8ae, "벽_plaster": 0xddd3c1, "벽_unknown": 0xc4beb2, "벽_apartment": 0xe3e0d9, "벽_metal": 0x979da1, "벽_glass": 0x4d6273,
     "옥상": 0x8f978a, "창고 지붕(골강판)": 0x8a8f93, "창고 철문": 0x5c5f62, "물탱크": 0xd9d9d4, "set1": 0xbfbfbf, "set2": 0xbfbfbf };
@@ -789,15 +790,24 @@ try { $("load").textContent = "성수동 상세 건물 불러오는 중…"; $("
     if (o.material.length === 1) o.material = o.material[0]; });
   scene.add(cd.scene); window.__detail = cd.scene; DETAIL_OK = true; buildCity(); READY.then(() => { linkMeshes(cd.scene); mergeStatic(cd.scene); MODEL_LINKED = true; buildCity(); });
   window.__tintCity = root => root.traverse(o => { if (!o.isMesh) return; o.castShadow = o.receiveShadow = true;
-    o.material = [].concat(o.material).map(m => { if (m.userData && m.userData.sharedTex) { const t = SHARED_TEX[(m.name || "").replace(/\.\d+$/, "")]; if (t) { m.map = t.map; m.normalMap = t.normalMap || null; m.normalScale.copy(t.normalScale); m.needsUpdate = true; } }
+    o.material = [].concat(o.material).map(m => { if (m.userData && m.userData.sharedTex) { const t = SHARED_TEX[(m.name || "").replace(/\.\d+$/, "")]; if (t) { for (const q of ["map", "normalMap", "roughnessMap", "metalnessMap", "emissiveMap"]) m[q] = t.m[q] || null; m.normalScale.copy(t.normalScale); m.needsUpdate = true; } }
       if (m.name === "창유리") return glass; if (m.name === "진열창") return shop;
       if (m.name === "옥상") { const r = m.clone(); r.color.setHex(pick([0x4a8a5e, 0x3f7d55, 0x5b9468, 0x9a9a95, 0x8a8b86, 0xa9a8a2, 0x77786f, 0x9c6a5c])); r.roughness = 0.95; return r; }
       if (TINT[m.name] != null) { const r = m.clone(); r.color.setHex(TINT[m.name]).multiplyScalar(rnd(0.82, 1.08)); r.roughness = 0.9; return r; } return m; });
     if (o.material.length === 1) o.material = o.material[0]; });
-  loader.loadAsync("models/city_far.glb").then(f => READY.then(() => f)).then(f => { window.__tintCity(f.scene); f.scene.traverse(o => { if (o.isMesh) o.castShadow = false; }); scene.add(f.scene); window.__far = f.scene; linkMeshes(f.scene); mergeStatic(f.scene); FAR_OK = true; buildCity(); drawBase(); msg("동네 전체 상세 건물을 다 불러왔습니다", 1.5);
-    return loader.loadAsync("models/city_extra.glb").then(x => { window.__tintCity(x.scene); scene.add(x.scene); window.__extra = x.scene; linkMeshes(x.scene, b => b.o); mergeStatic(x.scene); EXTRA_OK = true; buildCity();
-      return loader.loadAsync("models/city_extra2.glb"); }).then(x => { const has = b => (b.parts && b.parts.length) || (b.meshes && b.meshes.length);   // 공식 건물 중 상세 모델이 빠졌던 10동
-      window.__tintCity(x.scene); scene.add(x.scene); linkMeshes(x.scene, b => !b.o && !has(b) && !LM_NAMES.has(b.n)); mergeStatic(x.scene); coverLeftovers(); buildCity(); }); }).catch(e => console.warn("city_far.glb", e));   /* 먼 건물 → OSM 으로 채운 141동 → 모델 빠졌던 공식 10동 순서로 불러옴 */
+  READY.then(() => loader.loadAsync("models/city_extra.glb")).then(x => { window.__tintCity(x.scene); scene.add(x.scene); window.__extra = x.scene; linkMeshes(x.scene, b => b.o); mergeStatic(x.scene); EXTRA_OK = true; buildCity();
+      return loader.loadAsync("models/city_extra2.glb"); }).then(x => {   // 공식 건물 중 상세 모델이 빠졌던 10동(붙는 건물 번호는 전체를 다 불러온 상태에서 뽑아 둔 값)
+      window.__tintCity(x.scene); scene.add(x.scene); linkMeshes(x.scene, b => E2_IDX.has(b.ix)); mergeStatic(x.scene); for (const i of COVERED_IDX) if (B[i]) B[i].covered = true; buildCity(); }).catch(e => console.warn("city_extra", e));
+  // 먼 건물: 200m 칸 파일(models/far/)을 카메라 가까운 칸부터 받음. 아직 안 온 칸은 바닥 윤곽으로 세운 상자가 대신 보임
+  READY.then(() => fetch("models/far/index.json")).then(r => r.json()).then(ix => { const FAR = new THREE.Group(); FAR.name = "far"; scene.add(FAR); window.__far = FAR;
+    const left = ix.tiles.slice(), busy = new Set(); let dirty = false, lastBuild = 0, done = 0;
+    const one = t => { busy.add(t); loader.loadAsync("models/far/" + t.f).then(f => { window.__tintCity(f.scene); f.scene.traverse(o => { if (o.isMesh) o.castShadow = false; }); FAR.add(f.scene); linkMeshes(f.scene); mergeStatic(f.scene); FAR_OK = true; dirty = true; done++;
+        if (done === ix.tiles.length) msg("동네 전체 상세 건물을 다 불러왔습니다", 1.5); }).catch(e => console.warn("far", t.f, e)).finally(() => busy.delete(t)); };
+    const _cw = new THREE.Vector3(); const tick = () => { _cw.copy(window.__sky ? window.__sky.position : camera.position);   /* 카메라 자리는 그리기 직후 값(하늘 구가 따라감) */ const cx = _cw.x, cz = _cw.z, R = Math.min(1700, Math.max(520, _cw.y * 2.6));
+      while (busy.size < 3 && left.length) { let bi = -1, bd = 1e9; left.forEach((t, i) => { const d = Math.hypot(t.x - cx, t.z - cz); if (d < bd) { bd = d; bi = i; } }); if (bd > R) break; one(left.splice(bi, 1)[0]); }
+      if (dirty && (!busy.size || performance.now() - lastBuild > 1500)) { dirty = false; lastBuild = performance.now(); buildCity(); renderer.shadowMap.needsUpdate = true; }
+      if (left.length || busy.size || dirty) setTimeout(tick, 300); };
+    window.__farIx = ix; tick(); }).catch(e => console.warn("far tiles", e));
 } catch (e) { console.warn("city_detail.glb", e); }
 // 사람 = 직접 만든 충돌시험 더미 모양(살구색 비닐 피부 + 검은 관절 부품 + 노랑·검정 원형 표적). 실제 제품 모델을 본뜬 것이 아니라 일반적인 생김새를 도형으로 만든 것
 const TARGET_TEX = (() => { const c = document.createElement("canvas"); c.width = c.height = 128; const g = c.getContext("2d");
