@@ -1342,14 +1342,14 @@ const BINFO = window.BINFO = (() => {
 #binfo .src{font-size:11.5px;color:var(--faint);border-top:1px solid var(--line);padding-top:8px;line-height:1.5}
 #binfo .none{color:var(--faint)}#binfo .stack{display:flex;flex-direction:column;gap:3px}
 #binfo .fl{display:grid;grid-template-columns:3.4em 1fr auto;gap:8px;align-items:center;font:inherit;font-size:12.5px;text-align:left;color:var(--text);background:rgba(0,168,77,.07);border:1px solid var(--line);border-radius:6px;padding:4px 10px;cursor:pointer}
-#binfo .fl.b{background:rgba(255,255,255,.03)}#binfo .fl.on{background:var(--line2-soft);border-color:var(--line2)}#binfo .fl span{color:var(--muted)}
+#binfo .fl span:nth-child(2){white-space:normal;line-height:1.35}#binfo .fl.b{background:rgba(255,255,255,.03)}#binfo .fl.on{background:var(--line2-soft);border-color:var(--line2)}#binfo .fl span{color:var(--muted)}
 #binfo .shot{width:100%;aspect-ratio:4/3;border-radius:10px;border:1px solid var(--line);background:#0b0d10;object-fit:cover}
 #binfo .btn{font:inherit;font-size:13px;padding:8px 12px;border-radius:8px;border:1px solid var(--line2);background:var(--line2-soft);color:var(--text);cursor:pointer;text-align:center;text-decoration:none;display:inline-block}
 #binfo .btn.ghost{border-color:var(--line);background:transparent}#binfo .row{display:flex;gap:8px;flex-wrap:wrap}
 #binfo svg text{font-family:inherit}
 @media (max-width:640px){#binfo{top:auto;bottom:76px;height:58vh}}`; document.head.appendChild(st);
   const el = document.createElement("div"); el.id = "binfo"; el.className = "hud"; el.setAttribute("role", "dialog"); el.setAttribute("aria-label", "건물 정보"); document.body.appendChild(el);
-  let INFO = null, SRC = "", cur = null, tab = "o", floorSel = null; const hl = new THREE.Group(); hl.renderOrder = 20; scene.add(hl);
+  let INFO = null, SRC = "", FL_SRC = "", cur = null, tab = "o", floorSel = null; const hl = new THREE.Group(); hl.renderOrder = 20; scene.add(hl);
   const esc = t => String(t).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
   const fmtN = (v, u, d = 1) => v == null ? '<span class="none">대장에 값 없음</span>' : Number(v).toLocaleString("ko-KR", { maximumFractionDigits: d }) + (u ? " " + u : "");
   const shapeOf = b => { const sh = new THREE.Shape(); for (let i = 0; i < b.p.length; i += 2) (i ? sh.lineTo : sh.moveTo).call(sh, b.p[i], b.p[i + 1]); return sh; };
@@ -1362,7 +1362,7 @@ const BINFO = window.BINFO = (() => {
   const floorsOf = (b, d) => { const fu = d && d.fu || b.f || Math.max(1, Math.round(b.h / 3.3)), fb = d && d.fb || 0, H = d && d.h || b.h; return { fu, fb, fh: H / fu }; };
   const outline = b => { clearHL(); const { fu, fh } = floorsOf(b, info(b)); slab(b, 0, fu * fh, 0xf2c21a, 0.0); };
   function showFloor(b, k) { outline(b); const { fh } = floorsOf(b, info(b)); if (k == null) return;
-    const z0 = k > 0 ? (k - 1) * fh : k * 3.3, m = slab(b, z0 + 0.05, z0 + (k > 0 ? fh : 3.3) - 0.05, 0x00e070, 0.55); if (k < 0) { m.material.depthTest = false; } }
+    const fu0 = floorsOf(b, info(b)).fu; if (k >= 100) k = fu0 + (k - 100); const z0 = k > 0 ? (k - 1) * fh : k * 3.3, m = slab(b, z0 + 0.05, z0 + (k > 0 ? fh : 3.3) - 0.05, 0x00e070, 0.55); if (k < 0) { m.material.depthTest = false; } }
   function shot(b) {   // 트윈 화면에서 이 건물을 비스듬히 위에서 찍음(GTAO 없이 바로 그림)
     const d = info(b), H = (d && d.h) || b.h, R = Math.max(45, Math.sqrt(b.area || 400) * 2.4, H * 1.7), cam = new THREE.PerspectiveCamera(40, 4 / 3, 0.5, 4000);
     const yawS = Math.atan2(b.cy - player.y, b.cx - player.x) + Math.PI;   // 사용자 쪽에서 본 면
@@ -1386,15 +1386,19 @@ const BINFO = window.BINFO = (() => {
   function render() { const b = cur, d = info(b); if (!b) return;
     const name = (d && d.nm ? d.nm + (d.dong ? " " + d.dong : "") : b.n) || (d && d.use ? d.use : "이름 없는 건물"), { fu, fb, fh } = floorsOf(b, d);
     let body = "";
-    if (tab === "o") body = d ? `<dl><dt>주소</dt><dd>${esc(d.addr || "")}</dd><dt>주용도</dt><dd>${esc(d.use || "") || fmtN(null)}</dd><dt>구조</dt><dd>${esc(d.st || "") || fmtN(null)}</dd>
+    if (tab === "o") body = d ? `<dl><dt>주소</dt><dd>${esc(d.addr || "")}${d.road ? `<br><span style="color:var(--muted)">${esc(d.road)}</span>` : ""}</dd><dt>주용도</dt><dd>${esc(d.use || "") || fmtN(null)}</dd><dt>구조</dt><dd>${esc(d.st || "") || fmtN(null)}</dd>
         <dt>층수</dt><dd>지상 ${d.fu ?? "-"}층 · 지하 ${d.fb ?? 0}층</dd><dt>높이</dt><dd>${fmtN(d.h, "m")}</dd><dt>연면적</dt><dd>${fmtN(d.ga, "㎡")}</dd><dt>건축면적</dt><dd>${fmtN(d.ba, "㎡")}</dd>
         <dt>대지면적</dt><dd>${fmtN(d.la, "㎡")}</dd><dt>건폐율·용적률</dt><dd>${d.bc != null ? d.bc + "% · " + (d.fr ?? "-") + "%" : fmtN(null)}</dd><dt>사용승인일</dt><dd>${d.ap ? esc(d.ap) : fmtN(null)}</dd></dl>
         <div class="row"><a class="btn ghost" href="https://map.naver.com/p/search/${encodeURIComponent((d.addr || "").replace(/^서울특별시 /, "서울 "))}" target="_blank" rel="noopener">네이버 지도에서 보기</a></div>
         <p class="src">출처: ${esc(SRC)}. 건물통합정보는 건축물대장 표제부 항목을 도형에 붙인 공개 자료입니다. 자료 기준일 ${esc(d.ref || "-")} · 고유번호 ${esc(d.pnu || "-")}</p>`
       : `<dl><dt>층수</dt><dd>지상 ${b.f}층(모델 값)</dd><dt>높이</dt><dd>${fmtN(b.h, "m")}(모델 값)</dd></dl><p class="src">이 건물은 OpenStreetMap 으로 채운 건물이라 건축물대장 자료와 짝지어지지 않았습니다.</p>`;
-    if (tab === "f") { let h = ""; for (let k = fu; k >= -fb; k--) { if (k === 0) continue; h += `<button class="fl${k < 0 ? " b" : ""}${floorSel === k ? " on" : ""}" data-k="${k}"><b>${k > 0 ? k + "F" : "B" + -k}</b><span>${k > 0 ? "지상" : "지하"}</span><span>${k > 0 ? fh.toFixed(1) + "m" : ""}</span></button>`; }
-      body = `<p class="none" style="color:var(--muted)">층을 누르면 3D 건물에서 그 층이 초록으로 표시됩니다. 층 높이는 대장 높이 ÷ 지상층수로 고르게 나눈 값입니다.</p><div class="stack">${h}</div>
-        <p class="src">층별 용도·면적은 건축물대장 층별개요(국토교통부 건축HUB API, 인증키 필요)를 연결하면 층마다 채웁니다.</p>`; }
+    if (tab === "f") { const FL = d && d.fl, byK = new Map(); if (FL) for (const [k, u, a] of FL) { const e = byK.get(k) || byK.set(k, { u: [], a: 0 }).get(k); if (u && !e.u.includes(u)) e.u.push(u); e.a += a; }
+      const ks = []; for (let k = fu; k >= -fb; k--) if (k) ks.push(k); for (const k of byK.keys()) if (!ks.includes(k)) ks.push(k); ks.sort((a, c) => c - a);
+      const lab = k => k >= 100 ? "옥탑" + (k - 100 > 1 ? k - 100 : "") : k > 0 ? k + "F" : "B" + -k; let h = "";
+      for (const k of ks) { const e = byK.get(k); h += `<button class="fl${k < 0 ? " b" : ""}${floorSel === k ? " on" : ""}" data-k="${k}"><b>${lab(k)}</b><span>${e ? esc(e.u.join(", ")) || "용도 미기재" : FL ? "층별개요에 없음" : k > 0 ? "지상" : "지하"}</span><span>${e && e.a ? Math.round(e.a).toLocaleString("ko-KR") + "㎡" : ""}</span></button>`; }
+      const tot = FL ? FL.reduce((a, t) => a + t[2], 0) : 0;
+      body = `<p style="color:var(--muted);margin:0">층을 누르면 3D 건물에서 그 층이 초록으로 표시됩니다.${FL ? ` 층별 면적 합계 ${Math.round(tot).toLocaleString("ko-KR")}㎡${d.ga ? ` (대장 연면적 ${Math.round(d.ga).toLocaleString("ko-KR")}㎡)` : ""}.` : ""}</p><div class="stack">${h}</div>
+        <p class="src">${FL ? `출처: ${esc(FL_SRC)}. 층 높이는 대장 높이 ÷ 지상층수로 고르게 나눈 값입니다.` : d ? "이 건물은 층별개요가 없거나, 한 필지에 대장 건물이 여러 동이라 어느 동인지 가려내지 못해 층별 용도를 붙이지 않았습니다." : "대장과 짝지어지지 않은 건물입니다."}</p>`; }
     if (tab === "p") body = `<img class="shot" alt="트윈에서 찍은 이 건물" src="${shot(b)}"><p class="src">디지털트윈 화면에서 지금 시각·날씨로 찍은 그림입니다. 실제 사진은 직접 촬영(지상·드론)분이나 이용 제한 없는 공공 사진이 생기는 대로 넣습니다. 간판·상호는 실제 모습 그대로 둡니다.</p>
         ${d ? `<div class="row"><a class="btn ghost" href="https://map.naver.com/p/search/${encodeURIComponent((d.addr || "").replace(/^서울특별시 /, "서울 "))}" target="_blank" rel="noopener">네이버 지도 거리뷰로 보기</a></div>` : ""}`;
     if (tab === "l") body = plan(b, d) + `<p class="src">건물통합정보 도형의 바닥 윤곽입니다(층마다 같다고 가정). 실내 구획이 있는 실제 평면도는 소유·관리 측 자료를 받아 허락 범위 안에서 넣습니다. 블로그·포털의 평면도 사진은 올린 사람에게 저작권이 있어 그대로 옮기지 않습니다.</p>`;
@@ -1411,7 +1415,7 @@ const BINFO = window.BINFO = (() => {
     if (t.dataset.k) { const k = +t.dataset.k; floorSel = floorSel === k ? null : k; showFloor(cur, floorSel); render(); return; }
     if (t.dataset.act === "fire") { const b = cur, s2 = SCN.find(q => q.id === "fire"); close(); start(s2); setTimeout(() => SC.fire.onPick(b), 50); } });
   addEventListener("keydown", e => { if (e.key === "Escape" && cur) close(); });
-  async function open(b) { if (!INFO) { try { const j = await (await fetch("data/bldg_info.json")).json(); INFO = j.b; SRC = j.src; } catch (e) { INFO = []; SRC = "불러오기 실패"; } }
+  async function open(b) { if (!INFO) { try { const j = await (await fetch("data/bldg_info.json")).json(); INFO = j.b; SRC = j.src; FL_SRC = j.src_fl || ""; } catch (e) { INFO = []; SRC = "불러오기 실패"; } }
     cur = b; floorSel = null; const tb = document.getElementById("top"); if (tb && innerWidth > 640) el.style.top = Math.round(tb.getBoundingClientRect().bottom + 12) + "px"; el.classList.add("on"); outline(b); render(); }
   function close() { cur = null; el.classList.remove("on"); clearHL(); }
   return { open, close, get cur() { return cur; } }; })();
