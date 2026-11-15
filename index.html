@@ -974,8 +974,23 @@ const mc = $("mc"), mg = mc.getContext("2d");
 let MX0 = 1e9, MX1 = -1e9, MY0 = 1e9, MY1 = -1e9; for (const b of B) for (let i = 0; i < b.p.length; i += 2) { MX0 = Math.min(MX0, b.p[i]); MX1 = Math.max(MX1, b.p[i]); MY0 = Math.min(MY0, b.p[i + 1]); MY1 = Math.max(MY1, b.p[i + 1]); }
 const base = document.createElement("canvas"); base.width = base.height = 2048; const bgc = base.getContext("2d");
 const MS = 2048 / Math.max(MX1 - MX0, MY1 - MY0), mpx = (x, y) => [(x - MX0) * MS, (MY1 - y) * MS];
+// ══ 물(한강·중랑천·서울숲 호수): OSM 물 경계 → 반사·물결 있는 수면(바닥 사진·콘크리트 바닥 위) ══
+const RIVER = { list: null };
+{ const N = 256, d = new Uint8Array(N * N * 4), hgt = (x, y) => { let h = 0; for (const [fx, fy, a, ph] of [[3, 1, 1, 0], [1, 4, 0.8, 1.3], [5, 3, 0.5, 2.1], [7, -2, 0.35, 0.7], [-4, 6, 0.3, 4.2], [11, 5, 0.18, 3.3]]) h += a * Math.sin((x * fx + y * fy) / N * Math.PI * 2 + ph); return h; };
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) { const dx = hgt(x + 1, y) - hgt(x - 1, y), dy = hgt(x, y + 1) - hgt(x, y - 1), nx = -dx * 2.2, ny = -dy * 2.2, l = Math.hypot(nx, ny, 1), i = (y * N + x) * 4;
+    d[i] = (nx / l * 0.5 + 0.5) * 255; d[i + 1] = (ny / l * 0.5 + 0.5) * 255; d[i + 2] = (1 / l * 0.5 + 0.5) * 255; d[i + 3] = 255; }   // 물결 높이(사인 여럿, 이음매 없음) → 법선
+  const nt = new THREE.DataTexture(d, N, N); nt.wrapS = nt.wrapT = THREE.RepeatWrapping; nt.repeat.set(0.035, 0.035); nt.needsUpdate = true; const nt2 = nt.clone(); nt2.repeat.set(0.011, 0.011); nt2.needsUpdate = true;
+  RIVER.mat = new THREE.MeshStandardMaterial({ color: 0x2a4652, roughness: 0.08, metalness: 0.0, normalMap: nt, normalScale: new THREE.Vector2(0.35, 0.35), envMapIntensity: 1.4, polygonOffset: true, polygonOffsetFactor: -2 });
+  RIVER.mat.onBeforeCompile = sh => { sh.uniforms.uN2 = { value: nt2 }; sh.uniforms.uT = RIVER.t = { value: 0 };   // 물결 두 겹을 서로 다른 방향으로 흘림
+    sh.fragmentShader = "uniform sampler2D uN2; uniform float uT;\n" + sh.fragmentShader.replace("#include <normal_fragment_maps>", `vec2 wuv = vNormalMapUv; vec3 n1 = texture2D(normalMap, wuv + vec2(uT * 0.012, uT * 0.007)).xyz * 2.0 - 1.0; vec3 n2 = texture2D(uN2, wuv * 0.31 + vec2(-uT * 0.004, uT * 0.006)).xyz * 2.0 - 1.0;
+      vec3 mapN = normalize(vec3((n1.xy + n2.xy) * normalScale, 1.0)); normal = normalize(tbn * mapN);`); };
+  fetch("data/water.json").then(r => r.json()).then(j => { RIVER.list = j.w; const geos = [];
+    for (const rings of j.w) { const toV = a => { const v = []; for (let i = 0; i < a.length; i += 2) v.push(new THREE.Vector2(a[i], a[i + 1])); return v; }; const sh = new THREE.Shape(toV(rings[0])); for (const h of rings.slice(1)) sh.holes.push(new THREE.Path(toV(h)));
+      const g = new THREE.ShapeGeometry(sh); g.rotateX(-Math.PI / 2); g.translate(0, 0.12, 0); const uv = g.attributes.uv, pos = g.attributes.position; for (let i = 0; i < pos.count; i++) uv.setXY(i, pos.getX(i), pos.getZ(i)); g.computeTangents && 0; geos.push(g); }
+    const m = new THREE.Mesh(mergeGeometries(geos), RIVER.mat); m.receiveShadow = true; m.renderOrder = 1; scene.add(m); RIVER.mesh = m; try { drawBase(); } catch (e) {} }).catch(e => console.warn("water", e)); }
 function drawBase() {
   bgc.fillStyle = "#1b1e23"; bgc.fillRect(0, 0, 2048, 2048); bgc.strokeStyle = "#3d424a"; bgc.lineCap = "round";
+  if (RIVER.list) { bgc.fillStyle = "#1f4b63"; for (const rings of RIVER.list) { bgc.beginPath(); for (const a of rings) { for (let i = 0; i < a.length; i += 2) { const [u, v] = mpx(a[i], a[i + 1]); i ? bgc.lineTo(u, v) : bgc.moveTo(u, v); } bgc.closePath(); } bgc.fill("evenodd"); } }
   for (const w of city.ways) { bgc.lineWidth = Math.max(2, w.w * MS); bgc.beginPath(); for (let i = 0; i < w.p.length; i += 2) { const [a, b] = mpx(w.p[i], w.p[i + 1]); i ? bgc.lineTo(a, b) : bgc.moveTo(a, b); } bgc.stroke(); }
   for (const b of B) { if (b.gone) continue; bgc.fillStyle = b.tint ? b.tint : "#6b707a"; bgc.beginPath(); for (let i = 0; i < b.p.length; i += 2) { const [a, c] = mpx(b.p[i], b.p[i + 1]); i ? bgc.lineTo(a, c) : bgc.moveTo(a, c); } bgc.closePath(); bgc.fill(); }
 }
@@ -2579,7 +2594,7 @@ function frame(fixed) {
   if (pa && S) drawMap(S.marks().concat(CARS.map(c => [c.x, c.y, c.dead ? "#444" : c === DRIVE ? "#f2c230" : "#9aa3ad", 3.5])));
   window.__sky.position.copy(camera.position); if (AO_ON) COMP.render(); else renderer.render(scene, camera);
 }
-renderer.setAnimationLoop(() => frame());
+renderer.setAnimationLoop(() => { if (RIVER.t) RIVER.t.value = performance.now() / 1000; frame(); });
 window.__give = () => { for (let i = 2; i <= 5; i++) INV[i] = 99; equip(5); };   // 점검용
 window.__dbg = () => ({ S: S && S.targets ? S.targets().map(t => [Math.round(t.x - player.x), Math.round(t.y - player.y), Math.round(t.hp)]).slice(0, 5) : null, yaw });
 window.__aim = () => { const t = S.targets().sort((a, b) => Math.hypot(a.x - player.x, a.y - player.y) - Math.hypot(b.x - player.x, b.y - player.y))[0]; if (t) yaw = Math.atan2(-(t.x - player.x), t.y - player.y); return t && Math.round(Math.hypot(t.x - player.x, t.y - player.y)); };
