@@ -308,7 +308,7 @@ function timeEnv() {   // applyEnv 안에서 부름: 해·하늘·빛을 시간�
   document.head.appendChild(st); }
 const V = (x, y, z = 0) => new THREE.Vector3(x, z, -y);   // 지역좌표(x 동, y 북) → three(x, 위, -y)
 
-new RGBELoader().load("textures/wide_street_01_2k.hdr", t => { const pm = new THREE.PMREMGenerator(renderer); scene.environment = pm.fromEquirectangular(t).texture; t.dispose(); pm.dispose(); hemi.intensity = 0.15; sun.intensity = 3.4; try { envDim(0.55); } catch (e) {} });   // Poly Haven (CC0)
+new RGBELoader().load("textures/wide_street_01_1k.hdr", t => { const pm = new THREE.PMREMGenerator(renderer); scene.environment = pm.fromEquirectangular(t).texture; t.dispose(); pm.dispose(); hemi.intensity = 0.15; sun.intensity = 3.4; try { envDim(0.55); } catch (e) {} });   // Poly Haven (CC0)
 renderer.toneMappingExposure = 0.85; window.__g = { scene, sun, hemi, renderer, camera };
 const COMP = new EffectComposer(renderer); COMP.addPass(new RenderPass(scene, camera));
 const GTAO = new GTAOPass(scene, camera, innerWidth, innerHeight); GTAO.updateGtaoMaterial({ radius: 2.5, distanceExponent: 1.5, thickness: 2, scale: 1.2, samples: 12 }); GTAO.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 6, rings: 2, samples: 12 }); GTAO.blendIntensity = 0.85;
@@ -345,7 +345,7 @@ function triFor(m) { const n = (m.name || "").replace(/\.\d+$/, "");
   const P = [c.sw, c.se, c.ne, c.nw].map(p => V(p[0], p[1], 0));
   g.setAttribute("position", new THREE.Float32BufferAttribute(P.flatMap(v => [v.x, v.y, v.z]), 3));
   g.setAttribute("uv", new THREE.Float32BufferAttribute([0, 0, 1, 0, 1, 1, 0, 1], 2)); g.setIndex([0, 1, 2, 0, 2, 3]); g.computeVertexNormals();
-  const tx = await new THREE.TextureLoader().loadAsync("data/ground.jpg"); tx.colorSpace = THREE.SRGBColorSpace; tx.anisotropy = 8;
+  const tx = await new THREE.TextureLoader().loadAsync("data/ground.webp"); tx.colorSpace = THREE.SRGBColorSpace; tx.anisotropy = 8;
   const gm = new THREE.MeshStandardMaterial({ map: tx, roughness: 1, normalMap: T_CONC_N, normalScale: new THREE.Vector2(0.4, 0.4) });
   gm.onBeforeCompile = sh => { sh.uniforms.uTri = { value: T_CONC };
     sh.vertexShader = TRI_V[0] + sh.vertexShader.replace(...TRI_V[1]);
@@ -775,8 +775,9 @@ async function loadPerson(dir) {
 }
 try { const lm = await loader.loadAsync("models/landmarks.glb"); lm.scene.traverse(o => { if (o.isMesh) { o.castShadow = o.receiveShadow = true; } }); scene.add(lm.scene); window.__lm = lm.scene; setTimeout(() => linkMeshes(lm.scene), 0); LM_OK = true; buildCity(); }   // 블렌더 랜드마크(지역좌표 그대로)
 catch (e) { console.warn("landmarks.glb", e); }
-try { $("load").textContent = "성수동 상세 건물 불러오는 중…(25MB)"; $("load").style.display = "flex";
+try { $("load").textContent = "성수동 상세 건물 불러오는 중…"; $("load").style.display = "flex";
   const cd = await loader.loadAsync("models/city_detail.glb");
+  const SHARED_TEX = {}; cd.scene.traverse(o => { if (o.isMesh) for (const m of [].concat(o.material)) { const k = (m.name || "").replace(/\.\d+$/, ""); if (m.map && !SHARED_TEX[k]) SHARED_TEX[k] = { map: m.map, normalMap: m.normalMap, normalScale: m.normalScale.clone() }; } });   // 벽 그림(벽돌·콘크리트)은 이 파일에만 있음 → 뒤 파일들이 이름으로 가져다 씀
   // 블렌더 절차 재질(색·때)은 glTF 로 안 넘어와 하얗게 보임 → 재질 이름으로 렌더와 비슷한 색을 다시 입힘
   const TINT = { "벽_brick": 0xa86f58, "벽_concrete": 0xbdb8ae, "벽_plaster": 0xddd3c1, "벽_unknown": 0xc4beb2, "벽_apartment": 0xe3e0d9, "벽_metal": 0x979da1, "벽_glass": 0x4d6273,
     "옥상": 0x8f978a, "창고 지붕(골강판)": 0x8a8f93, "창고 철문": 0x5c5f62, "물탱크": 0xd9d9d4, "set1": 0xbfbfbf, "set2": 0xbfbfbf };
@@ -788,7 +789,8 @@ try { $("load").textContent = "성수동 상세 건물 불러오는 중…(25MB)
     if (o.material.length === 1) o.material = o.material[0]; });
   scene.add(cd.scene); window.__detail = cd.scene; DETAIL_OK = true; buildCity(); READY.then(() => { linkMeshes(cd.scene); mergeStatic(cd.scene); MODEL_LINKED = true; buildCity(); });
   window.__tintCity = root => root.traverse(o => { if (!o.isMesh) return; o.castShadow = o.receiveShadow = true;
-    o.material = [].concat(o.material).map(m => { if (m.name === "창유리") return glass; if (m.name === "진열창") return shop;
+    o.material = [].concat(o.material).map(m => { if (m.userData && m.userData.sharedTex) { const t = SHARED_TEX[(m.name || "").replace(/\.\d+$/, "")]; if (t) { m.map = t.map; m.normalMap = t.normalMap || null; m.normalScale.copy(t.normalScale); m.needsUpdate = true; } }
+      if (m.name === "창유리") return glass; if (m.name === "진열창") return shop;
       if (m.name === "옥상") { const r = m.clone(); r.color.setHex(pick([0x4a8a5e, 0x3f7d55, 0x5b9468, 0x9a9a95, 0x8a8b86, 0xa9a8a2, 0x77786f, 0x9c6a5c])); r.roughness = 0.95; return r; }
       if (TINT[m.name] != null) { const r = m.clone(); r.color.setHex(TINT[m.name]).multiplyScalar(rnd(0.82, 1.08)); r.roughness = 0.9; return r; } return m; });
     if (o.material.length === 1) o.material = o.material[0]; });
@@ -849,7 +851,7 @@ const mixPick = mix => { let r = Math.random() * mix.reduce((s, m) => s + m[1], 
 async function loadCarModels() {
   const out = {};
   await Promise.all(Object.keys(CAR_TYPES).map(async k => { try {
-    const g = await loader.loadAsync(`models/cars/${k}.glb?v=4`);   /* v: 모델을 고치면 올림(브라우저가 옛 모델을 기억함) */ g.scene.updateMatrixWorld(true); const parts = [], bb = new THREE.Box3();
+    const g = await loader.loadAsync(`models/cars/${k}.glb?v=5`);   /* v: 모델을 고치면 올림(브라우저가 옛 모델을 기억함) */ g.scene.updateMatrixWorld(true); const parts = [], bb = new THREE.Box3();
     g.scene.traverse(o => { if (o.isMesh) { const geo = o.geometry.clone(); geo.applyMatrix4(o.matrixWorld); geo.computeBoundingBox(); bb.union(geo.boundingBox); parts.push({ geo, mat: o.material }); } });
     const sx = bb.max.x - bb.min.x, sz = bb.max.z - bb.min.z, s = CAR_TYPES[k] / Math.max(sx, sz);
     const M = new THREE.Matrix4().makeScale(s, s, s).multiply(new THREE.Matrix4().makeRotationY((sx > sz ? -Math.PI / 2 : 0) + CAR_FRONT[k])).multiply(new THREE.Matrix4().makeTranslation(-(bb.min.x + bb.max.x) / 2, -bb.min.y, -(bb.min.z + bb.max.z) / 2));

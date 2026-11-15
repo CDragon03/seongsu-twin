@@ -113,7 +113,7 @@ for e in els:
         W_.append({"p": [r2(v) for q in pts for v in q], "w": round(sorted(wl + wr)[len(wl + wr) // 2], 1), "k": t["highway"], "n": t.get("name", "")})
 AL = []   # 카카오맵에서 뽑은 골목은 공개판에서 뺌(2026-11-13)
 GR = json.load(open(os.path.join(D, "data", "ground.json"), encoding="utf-8"))
-shutil.copy(os.path.join(D, "data", "ground.jpg"), os.path.join(G, "ground.jpg"))
+from PIL import Image as _I; _I.open(os.path.join(D, "data", "ground.jpg")).save(os.path.join(G, "ground.webp"), "WEBP", quality=85, method=6)   # 웹용 WebP(1단계 최적화)
 EX = json.load(open(os.path.join(D, "data", "subway_exits.json"), encoding="utf-8"))
 V = []
 for re_ in json.load(open(os.path.join(D, "data", "rail.json"), encoding="utf-8"))["elements"]:
@@ -201,7 +201,7 @@ _FJ2 = os.path.join(D, "data", "more", "factories.json")
 OFF["fac"] = [[f["x"], f["y"], f["n"], f["kind"], f["prod"]] for f in json.load(open(_FJ2, encoding="utf-8")) if _inb(f["x"], f["y"])] if os.path.exists(_FJ2) else []
 print("공식 교통안전시설", {k: len(v) for k, v in OFF.items()})
 out = {"stations": stations, "trees": TREES, "street": STREET, "shelters": SHEL, "facilities": FAC, "official": OFF, "exits2": exits2, "buildings": B, "roads": R, "alleys": [r2(v) for t_ in AL for v in t_], "ways": W_,
-       "ground": {"img": "ground.jpg", "corners": GR["corners"]}, "exits": EX, "viaduct": V,
+       "ground": {"img": "ground.webp", "corners": GR["corners"]}, "exits": EX, "viaduct": V,
        "start": [r2(CX), r2(CY)], "source": "건물: 국토교통부 GIS건물통합정보(빠진 147동은 OpenStreetMap 윤곽·높이 추정) · 도로: OpenStreetMap · 바닥: 국토지리정보원 정사영상 2025 · 가로수: 서울시 가로수 위치정보 2026"}
 json.dump(out, open(os.path.join(G, "city.json"), "w", encoding="utf-8"), ensure_ascii=False, separators=(",", ":"))
 print("건물", len(B), "도로 삼각형", len(R) // 6, "골목", len(AL), "길", len(W_), round(os.path.getsize(os.path.join(G, "city.json")) / 1e6, 1), "MB")
