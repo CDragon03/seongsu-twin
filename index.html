@@ -772,6 +772,17 @@ if (city.street && city.official && city.official.xw) { const ST = city.street, 
   window.__roadClean = n0 - ST.bo.length - ST.yb.length - ST.kz.length; }
 if (city.street && city.official && city.official.cam && city.official.cam.length) {   // CCTV 기둥: 추정 배치(52) 대신 성동구 공식 CCTV 위치(방범·주정차·신호과속 단속 121대), 카메라는 가장 가까운 길 쪽으로
   city.street.cc = city.official.cam.map(([x, y]) => { const n = nearNode(x, y, 60), q = n >= 0 ? NODES[n] : null; return [x, y, q ? Math.atan2(q.x - x, q.y - y) : 0]; }); }
+// 신호등: 공식 횡단보도(보행자신호등 있음 35곳) 양 끝에 보행자 신호등 + 한쪽에 차량 신호등, OpenStreetMap 신호등 21곳(차량). 전국 신호등 표준데이터가 열리면 바꿀 것
+const PED_SIG = [];
+if (city.street) { const segNear = (x, y) => { let best = null, bd = 1e9; for (const w of city.ways || []) { const p = w.p; for (let i = 2; i < p.length; i += 2) { const ax = p[i - 2], ay = p[i - 1], dx = p[i] - ax, dy = p[i + 1] - ay, l2 = dx * dx + dy * dy; if (!l2) continue; const t = Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / l2)), qx = ax + dx * t, qy = ay + dy * t, d = Math.hypot(x - qx, y - qy); if (d < bd) { const L = Math.sqrt(l2); bd = d; best = { tx: dx / L, ty: dy / L, qx, qy, w: w.w, d }; } } } return best; };
+  const tl = city.street.tl = (city.street.tl || []).slice(), armRot = (px, py, cx, cy) => Math.atan2(-(cx - px), cy - py) + Math.PI;   // 팔이 길 가운데를 향하게
+  for (const [x, y, lanes, sig] of (city.official && city.official.xw) || []) { if (!sig) continue; const s0 = segNear(x, y); if (!s0 || s0.d > 25) continue;
+    const half = Math.min(s0.w, lanes * 1.6 + 0.6), nx = -s0.ty, ny = s0.tx;
+    for (const sd of [1, -1]) { const px = x + nx * half * sd, py = y + ny * half * sd; PED_SIG.push([px, py, Math.atan2(-nx * sd, ny * sd)]); }   // 보행자 신호등: 길 건너편을 봄
+    const vx = x + nx * half + s0.tx * 3, vy = y + ny * half + s0.ty * 3; tl.push([vx, vy, armRot(vx, vy, x, y), Math.max(2, lanes * 1.2)]); }
+  fetch("data/osm_signals.json").then(r => r.json()).then(L => { for (const [x, y, hw] of L) { if (hw !== "traffic_signals") continue; const s0 = segNear(x, y); if (!s0) continue; const nx = -s0.ty, ny = s0.tx, h = Math.max(3, s0.w * 0.85), px = s0.qx + nx * h, py = s0.qy + ny * h;
+    if (tl.some(t => Math.hypot(t[0] - px, t[1] - py) < 12)) continue; window.__osmSig = (window.__osmSig || 0) + 1; addTL([px, py, armRot(px, py, s0.qx, s0.qy), Math.max(2, s0.w * 0.6)]); } }).catch(() => {}); }
+let addTL = () => {};
 if (city.street && city.street.xw) { const ST = city.street, up = new THREE.Vector3(0, 1, 0);
   if (city.official && city.official.ar && city.official.ar.length) {   // 노면 방향 화살표(서울시 방향표시 자료 실제 위치·각도·종류 771개)
     const KIND = { "007": "S", "005": "L", "006": "R", "008": "SL", "009": "SR", "010": "U", "011": "LU", "013": "LR", "014": "SLR", "015": "SU", "001": "Rx", "002": "Sx", "012": "Lx" }, keys = [...new Set(Object.values(KIND))];
@@ -848,15 +859,23 @@ if (city.street && city.street.xw) { const ST = city.street, up = new THREE.Vect
     for (const [list, col, bandC, r, h] of [[ST.bo, 0x55585b, 0xe2b21a, 0.1, 0.8], [ST.yb, 0x111214, 0xdcdcd6, 0.07, 0.9]]) { if (!list.length) continue;
       const body = new THREE.CylinderGeometry(r * 0.85, r, h, 10); body.translate(0, h / 2, 0); const band = new THREE.CylinderGeometry(r * 0.9, r * 0.9, 0.07, 10); band.translate(0, h * 0.8, 0);
       for (const [geo, c] of [[body, col], [band, bandC]]) { const im = new THREE.InstancedMesh(geo, new THREE.MeshStandardMaterial({ color: c, roughness: 0.5 }), list.length); list.forEach(([x, y], j) => { mm.compose(V(x, y, 0), q, one); im.setMatrixAt(j, mm); }); im.castShadow = true; scene.add(im); } } }
-  // 신호등(큰길 교차로 14곳): 기둥 5.6m + 길 위로 뻗은 팔 + 가로 4구(빨강 켜짐)
+  // 차량 신호등: 기둥 5.6m + 길 위로 뻗은 팔(추정 14곳 + 공식 신호 횡단보도 + OSM) + 가로 4구(빨강 켜짐)
   { const mP = new THREE.MeshStandardMaterial({ color: 0x75787b, roughness: 0.45, metalness: 0.6 }), mB = new THREE.MeshStandardMaterial({ color: 0x0b0b0c, roughness: 0.4 }),
       mR = new THREE.MeshStandardMaterial({ color: 0xff3a2a, emissive: 0xff2a1a, emissiveIntensity: 2.2 }), mO = new THREE.MeshStandardMaterial({ color: 0x2a2c2e, roughness: 0.3 });
-    for (const [x, y, rot, w] of ST.tl) { const arm = Math.min(5.5, w * 1.2 + 1.0), gr = new THREE.Group();
+    addTL = ([x, y, rot, w]) => { const arm = Math.min(5.5, w * 1.2 + 1.0), gr = new THREE.Group();
       const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.12, 5.6, 12), mP); pole.position.y = 2.8; gr.add(pole);
       const a = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.1, arm), mP); a.position.set(0, 5.4, -arm / 2); gr.add(a);
       const box = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.25, 1.35), mB); box.position.set(0, 5.17, -(arm - 0.3)); gr.add(box);
       for (let j = 0; j < 4; j++) { const l = new THREE.Mesh(new THREE.CircleGeometry(0.11, 16), j === 0 ? mR : mO); l.rotation.y = Math.PI / 2; l.position.set(0.18, 5.17, -(arm - 0.3 - 0.48 + j * 0.32)); gr.add(l); }
-      gr.position.copy(V(x, y, 0)); gr.rotation.y = rot - Math.PI; gr.traverse(o => { if (o.isMesh) o.castShadow = true; }); scene.add(gr); } } }
+      gr.position.copy(V(x, y, 0)); gr.rotation.y = rot - Math.PI; gr.traverse(o => { if (o.isMesh) o.castShadow = true; }); scene.add(gr); };
+    for (const t of ST.tl) addTL(t);
+    // 보행자 신호등(공식 횡단보도 중 보행자신호등 있음): 기둥 2.9m + 빨간 사람(켜짐)·초록 사람(꺼짐) 두 칸
+    if (PED_SIG.length) { const pole = new THREE.CylinderGeometry(0.06, 0.07, 2.9, 10); pole.translate(0, 1.45, 0); const head = new THREE.BoxGeometry(0.34, 0.62, 0.22); head.translate(0, 2.6, 0.1);
+      const red = new THREE.PlaneGeometry(0.24, 0.24); red.translate(0, 2.76, 0.215); const grn = new THREE.PlaneGeometry(0.24, 0.24); grn.translate(0, 2.46, 0.215);
+      const parts = [[pole, mP], [head, mB], [red, new THREE.MeshStandardMaterial({ color: 0xff3a2a, emissive: 0xff2a1a, emissiveIntensity: 2.0 })], [grn, new THREE.MeshStandardMaterial({ color: 0x1d3a2a, roughness: 0.4 })]];
+      const mm = new THREE.Matrix4(), q = new THREE.Quaternion(), one = new THREE.Vector3(1, 1, 1);
+      for (const [geo, mat] of parts) { const im = new THREE.InstancedMesh(geo, mat, PED_SIG.length); PED_SIG.forEach(([x, y, r], j) => { q.setFromAxisAngle(up, r); mm.compose(V(x, y, 0), q, one); im.setMatrixAt(j, mm); }); im.castShadow = true; scene.add(im); } }
+    window.__sig = { car: ST.tl.length, ped: PED_SIG.length }; } }
 
 // ── 사람 모델 ──
 let __readyRes; const READY = new Promise(r => __readyRes = r);   // 모듈 끝까지 다 정의된 뒤에 할 일
