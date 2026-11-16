@@ -1,0 +1,25 @@
+# 10분마다 서울 실시간 도시데이터·대기·공영주차장을 받아 live 가지(branch)에 live.json 하나만 덮어씀(기록이 쌓이지 않게 강제 푸시)
+# 인증키는 저장소 비밀값 SEOUL_KEY(Settings → Secrets and variables → Actions)에만 둠
+name: live-data
+on:
+  schedule: [{ cron: "*/10 * * * *" }]
+  workflow_dispatch: {}
+permissions: { contents: write }
+concurrency: { group: live-data, cancel-in-progress: true }
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+        with: { sparse-checkout: fetch_live.py, sparse-checkout-cone-mode: false }
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - name: fetch
+        env: { SEOUL_KEY: "${{ secrets.SEOUL_KEY }}", TZ: Asia/Seoul }
+        run: mkdir -p out && python -I fetch_live.py out/live.json
+      - name: publish
+        run: |
+          cd out && git init -q && git checkout -q -b live && git add live.json
+          git -c user.name=live-bot -c user.email=live-bot@users.noreply.github.com commit -qm "live $(date '+%F %H:%M')"
+          git push -qf "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}" live

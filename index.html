@@ -1605,6 +1605,20 @@ const DASH = window.DASH = (() => {
   function clearHL() { for (const b of HL) { paint(b, null); b.tint = null; } HL = []; cityDirty = true; }
   function highlight(fn, hex, label) { clearHL(); const css = "#" + hex.toString(16).padStart(6, "0"); for (const b of B) { const d = INFO[b.ix]; if (fn(b, d)) { paint(b, hex, hex, 0.35); b.tint = css; HL.push(b); } } cityDirty = true; msg(`${label} · 건물 ${fmt(HL.length)}동을 3D 에 칠했습니다`, 3); }
   async function load() { if (!INFO) INFO = (await (await fetch("data/bldg_info.json")).json()).b; if (!STO) STO = (await (await fetch("data/stores.json")).json()).b; }
+  function liveHtml() { const L = window.LIVE && LIVE.data; if (!L || !L.areas) return ""; const A = Object.entries(L.areas), f = n => n == null ? "-" : Math.round(n).toLocaleString("ko-KR");
+    return `<h3 style="margin:4px 0 8px;font-size:15px">지금 성수 <span style="color:var(--muted);font-weight:400;font-size:12px">서울 실시간 도시데이터 · ${L.t} 갱신</span></h3>
+      <div class="kp">${A.map(([nm, a]) => `<div class="k" style="border-color:${(LIVE.LV[a.lvl] || ["#555"])[0]}66"><span style="display:flex;align-items:center;gap:6px"><i style="width:9px;height:9px;border-radius:50%;background:${(LIVE.LV[a.lvl] || ["#888"])[0]}"></i>${nm}</span><b style="font-size:22px">${a.lvl || "-"}</b><small>${f(a.min)}~${f(a.max)}명 · 도로 ${a.road.idx || "-"} ${a.road.spd ?? "-"}km/h</small></div>`).join("")}
+        ${L.air ? `<div class="k"><span>성동구 대기</span><b style="font-size:22px">${L.air.grade || "-"}</b><small>미세 ${L.air.pm10} · 초미세 ${L.air.pm25}㎍/㎥ · 주요 ${L.air.main || "-"}</small></div>` : ""}</div>
+      <div class="gr" style="margin-bottom:12px"><div class="c"><h3>성수카페거리 혼잡 예측</h3><p>앞으로 12시간 예상 인구(최대) · 색 = 혼잡도</p><div class="cv"><canvas id="dFc"></canvas></div></div>
+        <div class="c"><h3>지금 성수카페거리에 있는 사람</h3><p>연령대 비율(%) · 상주 인구 ${L.areas["성수카페거리"] ? L.areas["성수카페거리"].resnt : "-"}%</p><div class="cv"><canvas id="dAge"></canvas></div></div>
+        <div class="c"><h3>세 곳 비교</h3><p>지금 인구(최대) · 도로 속도</p><div class="cv"><canvas id="dCmp"></canvas></div></div></div>`; }
+  function liveCharts() { const L = window.LIVE && LIVE.data; if (!L || !L.areas) return; const a = L.areas["성수카페거리"], tip = { backgroundColor: "rgba(20,24,29,.95)", padding: 10 }, ax = { grid: { color: "rgba(255,255,255,.06)" }, ticks: { color: "#9aa1a8" } };
+    if (a && a.fcst.length) mk("dFc", { type: "line", data: { labels: a.fcst.map(q => (q[0] || "").slice(11, 16)), datasets: [{ label: "예상 인구(최대)", data: a.fcst.map(q => q[3]), tension: 0.4, fill: true, borderColor: "#f2c21a", borderWidth: 2,
+        pointRadius: 5, pointBackgroundColor: a.fcst.map(q => (LIVE.LV[q[1]] || ["#888"])[0]), backgroundColor: c => grad(c, "rgba(242,194,26,.45)", "rgba(242,194,26,0)") }] },
+      options: { maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { ...tip, callbacks: { label: c => `${a.fcst[c.dataIndex][1]} · ${Math.round(a.fcst[c.dataIndex][2]).toLocaleString()}~${Math.round(a.fcst[c.dataIndex][3]).toLocaleString()}명` } } }, scales: { x: ax, y: ax } } });
+    if (a) mk("dAge", { type: "bar", data: { labels: ["10대 미만", "10대", "20대", "30대", "40대", "50대", "60대", "70대+"], datasets: [{ data: a.ages, borderRadius: 6, backgroundColor: c => grad(c, "#a970ff", "rgba(169,112,255,.2)") }] }, options: { maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: tip }, scales: { x: ax, y: ax } } });
+    const A = Object.entries(L.areas); mk("dCmp", { type: "bar", data: { labels: A.map(e => e[0]), datasets: [{ label: "인구(최대)", data: A.map(e => e[1].max), borderRadius: 6, backgroundColor: A.map(e => (LIVE.LV[e[1].lvl] || ["#888"])[0]) }, { label: "도로 속도(km/h)", data: A.map(e => e[1].road.spd), type: "line", yAxisID: "y2", borderColor: "#3fa9f5", pointRadius: 5, pointBackgroundColor: "#3fa9f5" }] },
+      options: { maintainAspectRatio: false, plugins: { legend: { labels: { color: "#cfd3d8", boxWidth: 10 } }, tooltip: tip }, scales: { x: ax, y: ax, y2: { position: "right", grid: { display: false }, ticks: { color: "#7cc4f7" }, beginAtZero: true } } } }); }
   function mk(id, cfg) { const cv = el.querySelector("#" + id); if (!cv || !window.Chart) return null; const c = new Chart(cv, cfg); charts.push(c); return c; }
   async function open() {
     if (S && S !== SC.free) { msg("도시 현황은 둘러보기에서 볼 수 있습니다", 2); }
@@ -1626,8 +1640,9 @@ const DASH = window.DASH = (() => {
         <div class="k"><b>${fmt(allS.length)}</b><span>영업 중 업체</span><small>상가(상권)정보 2026-09</small></div>
         <div class="k"><b>${Math.round(old / withY * 100)}%</b><span>사용승인 30년 넘은 건물</span><small>1996년 이전 ${fmt(old)}동</small></div>
         <div class="k"><b>${fmt(avgD)}<em style="font-style:normal;font-size:15px">m</em></b><span>가장 가까운 119까지(평균)</span><small>건물 중심 직선거리</small></div>
-        <div class="k"><b id="dLiveW">${fmt(NPC.length)}</b><span>지금 걷는 사람(시뮬레이션)</span><small id="dLiveC">달리는 차 ${fmt(TRAFFIC.cars.length)}대</small></div>
+        <div class="k"><b id="dLiveW">${fmt(NPC.length)}</b><span>지금 걷는 사람(시뮬레이션, 실제 혼잡도에 맞춤)</span><small id="dLiveC">달리는 차 ${fmt(TRAFFIC.cars.length)}대</small></div>
       </div>
+      ${liveHtml()}
       <div class="gr">
         <div class="c"><h3>건물 주용도</h3><p>건축물대장 주용도 · 조각을 누르면 3D 에 표시</p><div class="cv"><canvas id="dUse"></canvas></div></div>
         <div class="c"><h3>사용승인 연대</h3><p>막대를 누르면 그 연대 건물 표시 · 빨강은 1990년 이전(지은 지 30년 넘음)</p><div class="cv"><canvas id="dYear"></canvas></div></div>
@@ -1641,6 +1656,7 @@ const DASH = window.DASH = (() => {
       <p class="src">출처: 국토교통부 GIS건물통합정보(2026-11-09)·건축HUB 건축물대장 · 소상공인시장진흥공단 상가(상권)정보(2026-09) · 서울 열린데이터광장 소방서·119안전센터 위치. 시뮬레이션 그래프는 화면 속 모의 값입니다.</p>`;
     const tip = { backgroundColor: "rgba(20,24,29,.95)", borderColor: "rgba(255,255,255,.12)", borderWidth: 1, padding: 10, titleFont: { weight: "700" } }, ax = { grid: { color: "rgba(255,255,255,.06)" }, ticks: { color: "#9aa1a8" } };
     const legR = { position: "right", labels: { color: "#cfd3d8", boxWidth: 10, boxHeight: 10, font: { size: 11 } } };
+    liveCharts();
     mk("dUse", { type: "doughnut", data: { labels: useTop.map(u => u[0]), datasets: [{ data: useTop.map(u => u[1]), backgroundColor: PAL, borderWidth: 0, hoverOffset: 10 }] },
       options: { cutout: "64%", maintainAspectRatio: false, animation: { animateRotate: true, duration: 900 }, plugins: { legend: legR, tooltip: tip },
         onClick: (e, a) => { if (!a.length) return; const k = useTop[a[0].index][0]; if (k === "기타") return; highlight((b, d) => d && (d.use || "대장에 용도 없음") === k, parseInt(PAL[a[0].index].slice(1), 16), "주용도 " + k); } } });
@@ -1670,7 +1686,32 @@ const DASH = window.DASH = (() => {
   function close() { el.classList.remove("on"); clearInterval(liveT); }
   el.addEventListener("click", e => { if (e.target.closest(".x")) close(); else if (e.target.closest(".clr")) { clearHL(); msg("칠한 것을 지웠습니다", 1.5); } });
   addEventListener("keydown", e => { if (e.key === "Escape" && el.classList.contains("on")) close(); });
-  return { open, close, clearHL, toggle() { el.classList.contains("on") ? close() : open(); } }; })();
+  return { open, close, clearHL, isOpen: () => el.classList.contains("on"), toggle() { el.classList.contains("on") ? close() : open(); } }; })();
+// ══ 실시간: 서울 실시간 도시데이터(성수카페거리·서울숲공원·뚝섬역)·대기·주차장 — 공개판은 깃허브 액션이 10분마다 갱신한 live.json ══
+const LIVE = window.LIVE = (() => {
+  const URL_ = location.hostname === "localhost" || location.hostname === "127.0.0.1" ? "data/live.json" : "https://raw.githubusercontent.com/CDragon03/seongsu-twin/live/live.json";
+  const LV = { "여유": ["#2ec46e", 0.65], "보통": ["#f2c21a", 1.0], "약간 붐빔": ["#ff8a3d", 1.35], "붐빔": ["#ff4d4d", 1.7] };
+  const st = document.createElement("style"); st.textContent = `#liveChip{order:2;display:flex;align-items:center;gap:8px;font:inherit;font-size:12.5px;border:1px solid var(--line);background:rgba(255,255,255,.04);color:var(--text);border-radius:999px;padding:5px 12px 5px 8px;cursor:pointer;white-space:nowrap;max-width:100%;overflow:hidden}
+#liveChip i{width:9px;height:9px;border-radius:50%;flex:none;box-shadow:0 0 0 3px rgba(255,255,255,.08)}#liveChip b{font-weight:700}#liveChip span{color:var(--muted)}
+@media (prefers-reduced-motion:no-preference){#liveChip i{animation:lvp 2s infinite}@keyframes lvp{50%{opacity:.4}}}`; document.head.appendChild(st);
+  const chip = document.createElement("button"); chip.id = "liveChip"; chip.innerHTML = `<i style="background:#666"></i><span>실시간 자료 불러오는 중</span>`; chip.title = "서울 실시간 도시데이터 · 누르면 도시 현황"; chip.onclick = () => DASH.open(); const env = document.getElementById("env"); (env ? env.parentNode.insertBefore(chip, env) : document.getElementById("top").appendChild(chip));
+  const grp = new THREE.Group(); scene.add(grp); let data = null;
+  const LAT0 = 37.543, LON0 = 127.0535, KX = Math.cos(LAT0 * Math.PI / 180) * 111320, KY = 110540, xy = (la, lo) => [(lo - LON0) * KX, (la - LAT0) * KY];
+  function tag(txt, col, x, y) { const cv = document.createElement("canvas"), F = "800 30px Pretendard, sans-serif"; let g = cv.getContext("2d"); g.font = F; const W = Math.ceil(g.measureText(txt).width) + 70; cv.width = W; cv.height = 64; g = cv.getContext("2d");
+    g.fillStyle = "rgba(20,24,29,.88)"; g.beginPath(); g.roundRect(2, 6, W - 4, 52, 26); g.fill(); g.fillStyle = col; g.beginPath(); g.arc(32, 32, 18, 0, 7); g.fill(); g.font = F; g.fillStyle = "#fff"; g.textBaseline = "middle"; g.fillText(txt, 60, 34);
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(cv), depthTest: false, transparent: true, sizeAttenuation: false })); sp.scale.set(0.035 * W / 64, 0.035, 1); sp.position.copy(V(x, y, 16)); sp.renderOrder = 11; sp.userData.noAO = true; grp.add(sp); }
+  function markers() { for (const o of [...grp.children]) { grp.remove(o); o.material.map.dispose(); o.material.dispose(); } if (!data || !FAC_ON) return; const seen = new Set();
+    for (const a of Object.values(data.areas || {})) { for (const q of a.prk || []) { if (!q[3] || seen.has(q[0])) continue; seen.add(q[0]); const [x, y] = xy(q[3], q[4]); tag(`P ${q[0].replace(/\s*주차장$/, "")} ${q[2] != null ? `${q[2]}/${q[1]}` : q[1] + "면"}`, "#3a6fd8", x, y); }
+      for (const q of a.bike || []) { if (!q[3] || seen.has(q[0])) continue; seen.add(q[0]); const [x, y] = xy(q[4], q[3]); tag(`따릉이 ${q[1]}대`, "#2ec46e", x, y); } } }
+  function crowd() { if (!data || S !== SC.free) return; const a = data.areas["성수카페거리"]; if (!a) return; const k = (LV[a.lvl] || LV["보통"])[1], tgt = Math.round(110 * k);   // 지금 혼잡도에 맞춰 걷는 사람 수(보통=110명, 화면 둘레 기준 가정)
+    while (NPC.length < tgt) spawnWalker({ rmax: 220 }); while (NPC.length > tgt) { const w = NPC.pop(); scene.remove(w.a.root); } }
+  async function load() { try { data = await (await fetch(URL_ + "?t=" + Math.floor(Date.now() / 300000), { cache: "no-store" })).json(); } catch (e) { try { data = await (await fetch("data/live.json")).json(); data.stale = true; } catch (e2) { data = null; } }   /* 자동 갱신본이 없으면 저장소에 넣어 둔 마지막 값 */
+    if (!data) { chip.innerHTML = `<i style="background:#666"></i><span>실시간 자료 없음</span>`; return; }
+    const a = data.areas["성수카페거리"] || Object.values(data.areas)[0]; if (!a) return; const c = (LV[a.lvl] || ["#888"])[0], f = n => n >= 10000 ? (n / 10000).toFixed(1).replace(/\.0$/, "") + "만" : Math.round(n).toLocaleString("ko-KR");
+    chip.innerHTML = `<i style="background:${c}"></i><b>성수카페거리 ${a.lvl}</b><span>${f(a.min)}~${f(a.max)}명 · 도로 ${a.road.idx || "-"} ${a.road.spd ?? "-"}km/h · ${a.wx.temp ?? "-"}℃ · 초미세 ${a.wx.pm25 ?? "-"} · ${(a.time || data.t || "").slice(11)} 기준</span>`;
+    markers(); crowd(); if (window.DASH && DASH.isOpen && DASH.isOpen()) DASH.open(); }
+  load(); setInterval(load, 300000);
+  return { get data() { return data; }, LV, markers, crowd, reload: load }; })();
 // ══ 그래프(Chart.js 4) — 조작판 안 실시간 그래프 ══
 const CJ = window.Chart;
 if (CJ) { CJ.defaults.color = "#aab2bd"; CJ.defaults.borderColor = "rgba(255,255,255,.07)"; CJ.defaults.font.family = '"Pretendard","Malgun Gothic",system-ui,sans-serif'; CJ.defaults.font.size = 11;
@@ -2720,8 +2761,8 @@ let PAUSED = false, SPK = 1;
   for (const id of ["flyBtn", "sndBtn"]) { const b = $(id); b.className = "ico"; b.removeAttribute("style"); $("time").appendChild(b); }
   $("flyBtn").textContent = "✈ 자유 비행"; $("flyBtn").title = "G: 자유 비행 (WASD 이동, Space 위, C 아래)";
   { const db = document.createElement("button"); db.className = "ico"; db.id = "dashBtn"; db.textContent = "📊 도시 현황"; db.title = "건물·업체·안전 통계 대시보드"; db.onclick = () => DASH.toggle(); $("time").appendChild(db); }
-  { const fb = document.createElement("button"); fb.className = "ico on"; fb.id = "facBtn"; fb.textContent = "시설 표시"; fb.title = "119안전센터·경찰·대피장소 표지 켜고 끄기";
-    fb.onclick = () => { FAC_ON = !FAC_ON; fb.classList.toggle("on", FAC_ON); }; $("time").insertBefore(fb, $("flyBtn")); }
+  { const fb = document.createElement("button"); fb.className = "ico on"; fb.id = "facBtn"; fb.textContent = "시설 표시"; fb.title = "119안전센터·경찰·대피장소·주차장·따릉이 표지 켜고 끄기";
+    fb.onclick = () => { FAC_ON = !FAC_ON; fb.classList.toggle("on", FAC_ON); if (window.LIVE) LIVE.markers(); }; $("time").insertBefore(fb, $("flyBtn")); }
   { const a = document.createElement("button"); a.className = "ico"; a.id = "airBtn"; a.textContent = "항공 보기"; a.title = "V: 항공 보기와 거리 보기 바꾸기"; a.onclick = () => { air = !air; if (air) dist = Math.max(dist, 120); a.classList.toggle("on", air); }; $("time").insertBefore(a, $("flyBtn")); }
   $("time").insertBefore($("goal"), $("spd")); $("goal").className = "";
   $("play").onclick = () => { PAUSED = !PAUSED; $("play").textContent = PAUSED ? "▶" : "❚❚"; $("play").setAttribute("aria-label", PAUSED ? "재생" : "일시정지"); };
@@ -2747,7 +2788,7 @@ function start(s) {
   SFX.ui(); if (fly) { fly = false; scene.fog.far = FLY.fog || FOGB.far; $("flyBtn").classList.remove("on"); }   /* 자유 비행 중 시나리오를 고르면 비행을 끝냄(땅에서 하늘만 보이던 것) */
   if (window.BINFO) BINFO.close(); if (window.DASH) { DASH.close(); DASH.clearHL(); } clearAll(); scnDef = s; S = SC[s.id]; $("menu").style.display = "none"; $("end").style.display = "none"; $("scnName").textContent = "성수 디지털트윈 · " + s.name;
   player = { x: city.start[0], y: city.start[1], hp: 100, sp: 1 }; pa = makeActor(MAN); pa.root.add(MK_ME); goal = null; T = 0;
-  S.init(); initWeapons(); initCars(); $("hpW").style.display = S.hp === false ? "none" : ""; $("tools").textContent = S.tools || ""; $("stat").style.display = ""; $("goal").style.display = "";
+  S.init(); initWeapons(); initCars(); if (S === SC.free && window.LIVE) setTimeout(() => LIVE.crowd(), 0);   /* 둘러보기: 걷는 사람 수 = 지금 실제 혼잡도 */ $("hpW").style.display = S.hp === false ? "none" : ""; $("tools").textContent = S.tools || ""; $("stat").style.display = ""; $("goal").style.display = "";
   yaw = goal ? Math.atan2(-(goal.x - player.x), goal.y - player.y) : 0; pitch = 0.32; dist = 7; air = !!S.air; MK_ME.visible = !S.air; if (S.air) { yaw = 0.5; dist = S.dist0 || 200; } running = true; snowify(scene); if (S !== SC.sun) applyEnv(); if (S.air) scene.fog.far = Math.max(scene.fog.far, 2000); uiOnStart(s);
 }
 function end(win, text) {
