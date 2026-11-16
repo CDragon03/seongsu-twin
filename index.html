@@ -334,6 +334,29 @@ GTAO.overrideVisibility = function () { const cache = this._visibilityCache; thi
 COMP.addPass(GTAO); { const BL = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0, 0.6, 0.8); BL.enabled = false; COMP.addPass(BL); window.__bloom = BL; } COMP.addPass(new OutputPass()); COMP.addPass(new SMAAPass(innerWidth * renderer.getPixelRatio(), innerHeight * renderer.getPixelRatio()));; /* 후처리 뒤 테두리 계단 없애기(SMAA) */ window.__comp = COMP; let AO_ON = true;   // 건물 밑동·골목 그늘(GTAO). Q 로 끄고 켬
 addEventListener("keydown", e => { if (e.code === "KeyQ" && !e.repeat && document.activeElement.tagName !== "INPUT") { AO_ON = !AO_ON; if (window.__qual) window.__qual.userAO = AO_ON; msg("그늘 효과(AO) " + (AO_ON ? "켬" : "끔"), 1.2); } }); renderer.shadowMap.autoUpdate = false; let shT = 0; const shP = new THREE.Vector3();   // 그림자는 0.25초마다 또는 해·시점이 움직일 때만 다시 그림
 const city = await (await fetch("data/city.json")).json();
+// ── 지형: 국토지리정보원 공개DEM(2025, 90m) → data/terrain_ngii.json(100m 격자, 출발 지점 = 0). 모든 물체의 꼭짓점을 그 자리 땅 높이만큼 올림(정점 셰이더) ──
+const TER = await fetch("data/terrain_ngii.json").then(r => r.json()).catch(() => null);
+function terH(x, y) { if (!TER) return 0; const { x0, y0, step: S0, nx, ny, z } = TER, fx = (x - x0) / S0, fy = (y - y0) / S0, i = Math.floor(fx), j = Math.floor(fy), ax = fx - i, ay = fy - j;
+  const Z = (a, b) => z[Math.min(ny - 1, Math.max(0, b)) * nx + Math.min(nx - 1, Math.max(0, a))];
+  const h = (Z(i, j) * (1 - ax) + Z(i + 1, j) * ax) * (1 - ay) + (Z(i, j + 1) * (1 - ax) + Z(i + 1, j + 1) * ax) * ay;
+  const out = Math.max(0, x0 - x, x - (x0 + S0 * (nx - 1)), y0 - y, y - (y0 + S0 * (ny - 1))); return h * Math.max(0, 1 - out / 300); }   // 격자 밖 300m 에 걸쳐 0 으로
+window.__terH = terH;
+if (TER) { const N = TER.nx * TER.ny, f = v => (Number.isInteger(v) ? v.toFixed(1) : String(v));
+  const HEAD = `\n#ifndef TER_DEF\n#define TER_DEF\nconst int TNX = ${TER.nx}; const int TNY = ${TER.ny}; const float TX0 = ${f(TER.x0)}; const float TY0 = ${f(TER.y0)}; const float TST = ${f(TER.step)};
+const float TER_Z[${N}] = float[${N}](${TER.z.map(f).join(",")});
+float terZ(int i, int j) { return TER_Z[clamp(j, 0, TNY - 1) * TNX + clamp(i, 0, TNX - 1)]; }
+float terH(vec2 wxz) { float x = wxz.x, y = -wxz.y, fx = (x - TX0) / TST, fy = (y - TY0) / TST; int i = int(floor(fx)), j = int(floor(fy)); float ax = fx - floor(fx), ay = fy - floor(fy);
+  float h = mix(mix(terZ(i, j), terZ(i + 1, j), ax), mix(terZ(i, j + 1), terZ(i + 1, j + 1), ax), ay);
+  float o = max(max(TX0 - x, x - (TX0 + TST * float(TNX - 1))), max(TY0 - y, y - (TY0 + TST * float(TNY - 1)))); return h * clamp(1.0 - max(o, 0.0) / 300.0, 0.0, 1.0); }
+#endif\n`;
+  const C = THREE.ShaderChunk; C.clipping_planes_pars_vertex = C.clipping_planes_pars_vertex + HEAD;
+  C.project_vertex = C.project_vertex.replace("mvPosition = modelViewMatrix * mvPosition;", "#ifdef TER_DEF\n vec4 terW = modelMatrix * mvPosition; terW.y += terH(terW.xz); mvPosition = viewMatrix * terW;\n#else\n mvPosition = modelViewMatrix * mvPosition;\n#endif");
+  C.worldpos_vertex = C.worldpos_vertex.replace("worldPosition = modelMatrix * worldPosition;", "worldPosition = modelMatrix * worldPosition;\n#ifdef TER_DEF\n worldPosition.y += terH(worldPosition.xz);\n#endif"); }
+function subQuad(P, n) {   // 네 귀퉁이(sw,se,ne,nw) 평면을 n×n 칸으로 나눔(지형 따라 휘게)
+  const pos = [], uv = [], idx = [];
+  for (let j = 0; j <= n; j++) for (let i = 0; i <= n; i++) { const u = i / n, v = j / n, a = P[0].clone().lerp(P[1], u), b = P[3].clone().lerp(P[2], u), q = a.lerp(b, v); pos.push(q.x, q.y, q.z); uv.push(u, v); }
+  for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) { const k = j * (n + 1) + i; idx.push(k, k + 1, k + n + 2, k, k + n + 2, k + n + 1); }
+  const g = new THREE.BufferGeometry(); g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute("uv", new THREE.Float32BufferAttribute(uv, 2)); g.setIndex(idx); g.computeVertexNormals(); return g; }
 const B = city.buildings;
 B.forEach((b, i) => { b.ix = i; }); for (const b of B) { let sx = 0, sy = 0; const n = b.p.length / 2; for (let i = 0; i < b.p.length; i += 2) { sx += b.p[i]; sy += b.p[i + 1]; } b.cx = sx / n; b.cy = sy / n; b.hs = 1; b.gone = false; b.tint = null; }
 const centerOf = name => { const L = B.filter(b => b.n === name); return L.length ? { x: L.reduce((s, b) => s + b.cx, 0) / L.length, y: L.reduce((s, b) => s + b.cy, 0) / L.length } : null; };
@@ -372,16 +395,22 @@ function triFor(m) { const n = (m.name || "").replace(/\.\d+$/, "");
   { float dd = length(vTW - cameraPosition); vec3 tc = texture2D(uTri, vTW.xz / 3.0).rgb * 0.5; float lum = dot(diffuseColor.rgb, vec3(0.3, 0.59, 0.11));
     vec3 near = tc * mix(vec3(1.0), diffuseColor.rgb / max(lum, 0.03), 0.18) * (0.75 + 0.5 * lum);
     diffuseColor.rgb = mix(near, diffuseColor.rgb, smoothstep(45.0, 240.0, dd)); }`); };
-  const m = new THREE.Mesh(g, gm); m.receiveShadow = true; scene.add(m);
+  const m = new THREE.Mesh(TER ? subQuad(P, 80) : g, gm); m.receiveShadow = true; scene.add(m);
   if (city.ground2) { const c2 = city.ground2.corners, g2 = new THREE.BufferGeometry(), P2 = [c2.sw, c2.se, c2.ne, c2.nw].map(p => V(p[0], p[1], -0.15));   // 넓은 바닥 사진(1m): 한강 둔치·강변북로·다리·건너편. 가운데 0.5m 사진 아래에 깖
     g2.setAttribute("position", new THREE.Float32BufferAttribute(P2.flatMap(v => [v.x, v.y, v.z]), 3)); g2.setAttribute("uv", new THREE.Float32BufferAttribute([0, 0, 1, 0, 1, 1, 0, 1], 2)); g2.setIndex([0, 1, 2, 0, 2, 3]); g2.computeVertexNormals();
     new THREE.TextureLoader().load("data/" + city.ground2.img, t2 => { t2.colorSpace = THREE.SRGBColorSpace; t2.anisotropy = 8;
-      const m2 = new THREE.Mesh(g2, new THREE.MeshStandardMaterial({ map: t2, roughness: 1 })); m2.receiveShadow = true; scene.add(m2); window.__ground2 = m2; }); }
-  const fT = T_CONC.clone(); fT.repeat.set(1600, 1600); fT.needsUpdate = true; const far = new THREE.Mesh(new THREE.PlaneGeometry(6000, 6000), new THREE.MeshStandardMaterial({ map: fT, color: 0x8d8d86, roughness: 0.95 })); far.receiveShadow = true;   // 사진 밖: 콘크리트
+      const m2 = new THREE.Mesh(TER ? subQuad(P2, 120) : g2, new THREE.MeshStandardMaterial({ map: t2, roughness: 1 })); m2.receiveShadow = true; scene.add(m2); window.__ground2 = m2; }); }
+  const fT = T_CONC.clone(); fT.repeat.set(1600, 1600); fT.needsUpdate = true; const far = new THREE.Mesh(new THREE.PlaneGeometry(6000, 6000, TER ? 120 : 1, TER ? 120 : 1), new THREE.MeshStandardMaterial({ map: fT, color: 0x8d8d86, roughness: 0.95 })); far.receiveShadow = true;   // 사진 밖: 콘크리트
   far.rotation.x = -Math.PI / 2; far.position.y = -0.45; scene.add(far); }
 const TXL = new THREE.TextureLoader(), ASPH = TXL.load("textures/asphalt.jpg"), ASPH_N = TXL.load("textures/asphalt_n.jpg");   // ambientCG Road012A (CC0)
 for (const t of [ASPH, ASPH_N]) { t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 8; } ASPH.colorSpace = THREE.SRGBColorSpace;
 function trisMesh(arr, color, y) {
+  if (TER) { const out = [], L2 = (a, b, c, d) => (a - c) ** 2 + (b - d) ** 2, sp = (t, dep) => { const [ax, ay, bx, by, cx, cy] = t, e = [L2(ax, ay, bx, by), L2(bx, by, cx, cy), L2(cx, cy, ax, ay)], m = Math.max(...e);   // 지형 따라 휘게 긴 삼각형을 쪼갬
+      if (m < 625 || dep > 7) { out.push(...t); return; } const k = e.indexOf(m);
+      if (k === 0) { const mx = (ax + bx) / 2, my = (ay + by) / 2; sp([ax, ay, mx, my, cx, cy], dep + 1); sp([mx, my, bx, by, cx, cy], dep + 1); }
+      else if (k === 1) { const mx = (bx + cx) / 2, my = (by + cy) / 2; sp([ax, ay, bx, by, mx, my], dep + 1); sp([ax, ay, mx, my, cx, cy], dep + 1); }
+      else { const mx = (cx + ax) / 2, my = (cy + ay) / 2; sp([ax, ay, bx, by, mx, my], dep + 1); sp([mx, my, bx, by, cx, cy], dep + 1); } };
+    for (let i = 0; i + 5 < arr.length; i += 6) sp(arr.slice(i, i + 6), 0); arr = out; }
   const pos = [], uv = []; for (let i = 0; i < arr.length; i += 2) { pos.push(arr[i], y, -arr[i + 1]); uv.push(arr[i] / 4, arr[i + 1] / 4); }   // 4m 마다 한 장
   const g = new THREE.BufferGeometry(); g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute("uv", new THREE.Float32BufferAttribute(uv, 2)); g.computeVertexNormals();
   const m = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ map: ASPH, normalMap: ASPH_N, normalScale: new THREE.Vector2(0.8, 0.8), color: 0xb4b4b4, roughness: 0.88, side: THREE.DoubleSide })); m.material.userData.snowK = 0.35; window.__roadMat = m.material; m.receiveShadow = true; scene.add(m);   // 큰길은 제설돼 눈이 덜 쌓임
@@ -2121,7 +2150,7 @@ SC.crowd = { hp: false, air: true, tools: "건물을 눌러 모이는 곳 바꾸
     this.im = new THREE.InstancedMesh(CROWD_G, new THREE.MeshStandardMaterial({ roughness: 0.8 }), CROWD_MAX); this.im.count = 0; this.im.castShadow = true; this.im.frustumCulled = false; scene.add(this.im); extra.push(this.im);
     this.exitN = [...new Set(city.exits.map(e => nearNode(e.x, e.y, 80)).filter(i => i >= 0))];
     this.hc = document.createElement("canvas"); this.hc.width = this.hc.height = 500; this.hx = this.hc.getContext("2d"); this.ht = new THREE.CanvasTexture(this.hc); this.ht.colorSpace = THREE.SRGBColorSpace;
-    this.heat = new THREE.Mesh(new THREE.PlaneGeometry(1000, 1000).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ map: this.ht, transparent: true, depthWrite: false, opacity: 0.85 })); this.heat.renderOrder = 3; scene.add(this.heat); extra.push(this.heat); this.hT = 0;
+    this.heat = new THREE.Mesh(new THREE.PlaneGeometry(1000, 1000, 50, 50).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ map: this.ht, transparent: true, depthWrite: false, opacity: 0.85 })); this.heat.renderOrder = 3; scene.add(this.heat); extra.push(this.heat); this.hT = 0;
     this.rate = 600;
     ctrl(`<b>인파 밀집</b><div class="cr"><span>상황</span><select id="p_m"><option value="popup">팝업 오픈런(역·골목 → 매장 → 귀가)</option><option value="home">퇴근길(동네 → 성수역)</option></select></div>
       <div class="cr"><span>매장</span><select id="p_shop">${HOT_SHOPS.map((h, i) => `<option value="${i}">${h.lab}</option>`).join("")}<option value="-1">지도에서 건물 누르기</option></select></div>
@@ -2278,7 +2307,7 @@ SC.epi = { hp: false, air: true, tools: "사람을 누르면 그 근처 1명 감
     this.ch = new LiveChart([{ label: "감염", color: hex6(EPI_C.I), unit: "명" }, { label: "잠복", color: hex6(EPI_C.E), unit: "명" }, { label: "회복", color: hex6(EPI_C.R), unit: "명" }], { h: 170, stacked: true, max: 400, xt: "일" });
     player.x = DAELIM ? DAELIM.x : player.x; player.y = DAELIM ? DAELIM.y : player.y; this.dist0 = 330; dist = 330;
     this.hc = document.createElement("canvas"); this.hc.width = this.hc.height = 500; this.hx = this.hc.getContext("2d"); this.ht = new THREE.CanvasTexture(this.hc); this.ht.colorSpace = THREE.SRGBColorSpace; this.hc0 = { x: player.x - 500, y: player.y - 500 };
-    this.heat = new THREE.Mesh(new THREE.PlaneGeometry(1000, 1000).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ map: this.ht, transparent: true, depthWrite: false })); this.heat.position.copy(V(player.x, player.y, 0.6)); this.heat.renderOrder = 3; scene.add(this.heat); extra.push(this.heat); this.hT = 0;
+    this.heat = new THREE.Mesh(new THREE.PlaneGeometry(1000, 1000, 50, 50).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ map: this.ht, transparent: true, depthWrite: false })); this.heat.position.copy(V(player.x, player.y, 0.6)); this.heat.renderOrder = 3; scene.add(this.heat); extra.push(this.heat); this.hT = 0;
     this.reset(); },
   reset() { if (this.ch) this.ch.reset(); this.A = []; this.h = 0; this.hist = []; this.peak = 0;
     const nodes = NODES.map((n, i) => i).filter(i => NADJ[i].length && Math.hypot(NODES[i].x - player.x, NODES[i].y - player.y) < 350);
@@ -2427,7 +2456,7 @@ SC.evac = Object.assign(Object.create(SC.crowd), { tools: "땅을 누르면 대�
   init() { this.A = []; this.acc = 0; this.done = 0; this.t = 0; this.N = 2000; this.mult = 2; this.rate = 0; this.peak = 0; this.times = [];
     this.im = new THREE.InstancedMesh(CROWD_G, new THREE.MeshStandardMaterial({ roughness: 0.8 }), CROWD_MAX); this.im.count = 0; this.im.frustumCulled = false; scene.add(this.im); extra.push(this.im);
     this.hc = document.createElement("canvas"); this.hc.width = this.hc.height = 500; this.hx = this.hc.getContext("2d"); this.ht = new THREE.CanvasTexture(this.hc); this.ht.colorSpace = THREE.SRGBColorSpace;
-    this.heat = new THREE.Mesh(new THREE.PlaneGeometry(1000, 1000).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ map: this.ht, transparent: true, depthWrite: false, opacity: 0.85 })); this.heat.renderOrder = 3; scene.add(this.heat); extra.push(this.heat); this.hT = 0;
+    this.heat = new THREE.Mesh(new THREE.PlaneGeometry(1000, 1000, 50, 50).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ map: this.ht, transparent: true, depthWrite: false, opacity: 0.85 })); this.heat.renderOrder = 3; scene.add(this.heat); extra.push(this.heat); this.hT = 0;
     this.center = DAELIM ? { x: DAELIM.x, y: DAELIM.y } : { x: player.x, y: player.y }; this.hc0 = { x: this.center.x - 500, y: this.center.y - 500 }; this.heat.position.copy(V(this.center.x, this.center.y, 0.6));
     player.x = this.center.x; player.y = this.center.y; this.dist0 = 460; dist = 460;
     this.kind = "official"; this.pins = [];
@@ -2948,20 +2977,20 @@ function frame(fixed) {
   SMOKE.update(dt, 0.15); FIREP.update(dt, 0.5); DUST.update(dt, 0.4); RAIN.update(dt);
   BOOM.intensity *= Math.pow(0.02, dt); shake = Math.max(0, shake - dt * 0.6);
   if (msgT > 0) { msgT -= dt; if (msgT <= 0) $("msg").style.display = "none"; }
-  const tgt = V(player.x, player.y, window.__intZ != null ? window.__intZ : 1.5), pt = air ? airPt : pitch, ds = air ? Math.max(dist, 20) : dist;
+  const tgt = V(player.x, player.y, (window.__intZ != null ? window.__intZ : 1.5) + terH(player.x, player.y)), pt = air ? airPt : pitch, ds = air ? Math.max(dist, 20) : dist;
   if (fly) {   // 자유 비행: 카메라 앞뒤좌우(땅과 나란히)·위아래, 건물 지붕 아래로는 안 내려감
     const sp = (keys.ShiftLeft || keys.ShiftRight ? 90 : 25) * dt, fx = -Math.sin(yaw), fy = Math.cos(yaw);
     const f = (keys.KeyW ? 1 : 0) - (keys.KeyS ? 1 : 0), r = (keys.KeyD ? 1 : 0) - (keys.KeyA ? 1 : 0), u = (keys.Space ? 1 : 0) - (keys.KeyC ? 1 : 0);
-    FLY.x += (fx * f + fy * r) * sp; FLY.y += (fy * f - fx * r) * sp; FLY.z = Math.min(900, Math.max(heightAt(FLY.x, FLY.y) + 1.6, FLY.z + u * sp));
+    FLY.x += (fx * f + fy * r) * sp; FLY.y += (fy * f - fx * r) * sp; FLY.z = Math.min(900, Math.max(heightAt(FLY.x, FLY.y) + terH(FLY.x, FLY.y) + 1.6, FLY.z + u * sp));
     camera.position.copy(V(FLY.x, FLY.y, FLY.z)); camera.lookAt(camera.position.clone().add(new THREE.Vector3(-Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), -Math.cos(yaw) * Math.cos(pitch))));
     scene.fog.far = Math.max(650, FLY.z * 4);
   } else if (S && S.pano && running) {   // 360 보기: 그 자리에 서서 둘러봄
-    camera.position.copy(V(player.x, player.y, S.z)); camera.lookAt(camera.position.clone().add(new THREE.Vector3(-Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), -Math.cos(yaw) * Math.cos(pitch))));
+    camera.position.copy(V(player.x, player.y, S.z + terH(player.x, player.y))); camera.lookAt(camera.position.clone().add(new THREE.Vector3(-Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), -Math.cos(yaw) * Math.cos(pitch))));
   } else {
   // 3인칭: 나와 카메라 사이에 건물이 있으면 그 앞까지 당김(부드럽게)
   let dOk = ds; if (!air) for (let d = 1.2; d <= ds; d += 0.6) { const cx = player.x - Math.sin(yaw) * Math.cos(pt) * d * -1 * -1, k = d;
       const wx = tgt.x + Math.sin(yaw) * Math.cos(pt) * k, wz = tgt.z + Math.cos(yaw) * Math.cos(pt) * k, wy = tgt.y + Math.sin(pt) * k;
-      if (heightAt(wx, -wz) > wy - 0.3) { dOk = Math.max(1.2, d - 0.8); break; } }
+      if (heightAt(wx, -wz) + terH(wx, -wz) > wy - 0.3) { dOk = Math.max(1.2, d - 0.8); break; } }
   camD += (dOk - camD) * Math.min(1, (dOk < camD ? 12 : 3) * dt); const dc = air ? ds : camD;
   camera.position.set(tgt.x + Math.sin(yaw) * Math.cos(pt) * dc, tgt.y + Math.sin(pt) * dc, tgt.z + Math.cos(yaw) * Math.cos(pt) * dc);
   if (shake > 0) camera.position.add(new THREE.Vector3(rnd(-1, 1), rnd(-1, 1), rnd(-1, 1)).multiplyScalar(shake * 0.5));
