@@ -418,7 +418,7 @@ function trisMesh(arr, color, y) {
   const g = new THREE.BufferGeometry(); g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute("uv", new THREE.Float32BufferAttribute(uv, 2)); g.computeVertexNormals();
   const m = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ map: ASPH, normalMap: ASPH_N, normalScale: new THREE.Vector2(0.8, 0.8), color: 0xb4b4b4, roughness: 0.88, side: THREE.DoubleSide })); m.material.userData.snowK = 0.35; window.__roadMat = m.material; m.receiveShadow = true; scene.add(m);   // 큰길은 제설돼 눈이 덜 쌓임
 }
-trisMesh(city.roads, 0x424347, 0.06);   // 골목은 정사영상(국토지리정보원)에 그대로 보임
+trisMesh(city.roads_rw || city.roads, 0x424347, 0.06);   // 길 면 = 도로명주소 실폭도로(행정안전부, 골목까지 실제 폭). 없으면 예전 OSM 큰길
 
 // ── 건물(상태가 바뀌면 다시 합침: 숨김·높이·색) ──
 const winTex = (() => { const cv = document.createElement("canvas"); cv.width = 128; cv.height = 128; const g = cv.getContext("2d");
@@ -1061,7 +1061,8 @@ const RIVER = { list: null };
 function drawBase() {
   bgc.fillStyle = "#1b1e23"; bgc.fillRect(0, 0, 2048, 2048); bgc.strokeStyle = "#3d424a"; bgc.lineCap = "round";
   if (RIVER.list) { bgc.fillStyle = "#1f4b63"; for (const rings of RIVER.list) { bgc.beginPath(); for (const a of rings) { for (let i = 0; i < a.length; i += 2) { const [u, v] = mpx(a[i], a[i + 1]); i ? bgc.lineTo(u, v) : bgc.moveTo(u, v); } bgc.closePath(); } bgc.fill("evenodd"); } }
-  for (const w of city.ways) { bgc.lineWidth = Math.max(2, w.w * MS); bgc.beginPath(); for (let i = 0; i < w.p.length; i += 2) { const [a, b] = mpx(w.p[i], w.p[i + 1]); i ? bgc.lineTo(a, b) : bgc.moveTo(a, b); } bgc.stroke(); }
+  if (city.roads_rw) { bgc.fillStyle = "#3d424a"; const R = city.roads_rw; bgc.beginPath(); for (let i = 0; i + 5 < R.length; i += 6) { const [a1, b1] = mpx(R[i], R[i + 1]), [a2, b2] = mpx(R[i + 2], R[i + 3]), [a3, b3] = mpx(R[i + 4], R[i + 5]); bgc.moveTo(a1, b1); bgc.lineTo(a2, b2); bgc.lineTo(a3, b3); bgc.closePath(); } bgc.fill(); }   // 실폭도로 면
+  else for (const w of city.ways) { bgc.lineWidth = Math.max(2, w.w * MS); bgc.beginPath(); for (let i = 0; i < w.p.length; i += 2) { const [a, b] = mpx(w.p[i], w.p[i + 1]); i ? bgc.lineTo(a, b) : bgc.moveTo(a, b); } bgc.stroke(); }
   for (const b of B) { if (b.gone) continue; bgc.fillStyle = b.tint ? b.tint : "#6b707a"; bgc.beginPath(); for (let i = 0; i < b.p.length; i += 2) { const [a, c] = mpx(b.p[i], b.p[i + 1]); i ? bgc.lineTo(a, c) : bgc.moveTo(a, c); } bgc.closePath(); bgc.fill(); }
 }
 drawBase();
