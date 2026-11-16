@@ -66,5 +66,13 @@ if os.path.exists(fp):
         f = fm.group(1) if fm else (str(int(ho[0][:4].split("~")[0]) // 100) if ho and not ho[0].startswith("B") else "")
         fac.setdefault(bi, []).append([r["회사명"].strip(), r["업종명"].strip(), r["생산품"].strip(), f, ",".join(ho)]); fst["붙임"] += 1
 print("등록 공장", fst)
-json.dump({"src": f"소상공인시장진흥공단 상가(상권)정보 {ref[:4]}-{ref[4:]} (공공데이터포털, 이용 제한 없음)", "b": out, "f": fac, "src_f": "서울 성동구 공장등록현황(공공데이터포털, 공장대표주소 기준)"}, open(os.path.join(G, "data", "stores.json"), "w", encoding="utf-8"), ensure_ascii=False, separators=(",", ":"))
+# 현장 확인 입주사: data/stores_manual.json {"b": {PNU: [[회사명, 하는 일(모르면 빈 칸), 층, 호, 확인일]]}} → 그 필지의 가장 큰 건물
+man = {}; mp = os.path.join(G, "data", "stores_manual.json"); MSRC = ""
+if os.path.exists(mp):
+    M = json.load(open(mp, encoding="utf-8")); MSRC = M.get("src", "")
+    for pnu, L in M["b"].items():
+        c = by_pnu.get(pnu)
+        if c: man.setdefault(max(c, key=lambda i: polys[i].area), []).extend(L)
+print("현장 확인", sum(map(len, man.values())))
+json.dump({"src": f"소상공인시장진흥공단 상가(상권)정보 {ref[:4]}-{ref[4:]} (공공데이터포털, 이용 제한 없음)", "b": out, "f": fac, "src_f": "서울 성동구 공장등록현황(공공데이터포털, 공장대표주소 기준)", "m": man, "src_m": MSRC}, open(os.path.join(G, "data", "stores.json"), "w", encoding="utf-8"), ensure_ascii=False, separators=(",", ":"))
 print(st, "건물", len(out), round(os.path.getsize(os.path.join(G, "data", "stores.json")) / 1048576, 2), "MB")
