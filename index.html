@@ -660,8 +660,8 @@ const SIGN = (() => {   // 실제 상호 간판: 소상공인시장진흥공단 
   const fmat = new THREE.MeshStandardMaterial({ color: 0x2b2d30, roughness: 0.6, metalness: 0.4 });
   const STY = { 음식: [["#3b2a1e", "#f6e7c8"], ["#f7f3ea", "#8f1d1d"], ["#141518", "#ffd27a"], ["#8f1d1d", "#fff4e0"]], 소매: [["#f4f2ec", "#1b1b1b"], ["#141518", "#f2f2f2"], ["#e9e2d0", "#3a2a1a"]], "수리·개인": [["#f4f2ec", "#1d3e79"], ["#2a2a2a", "#f2f2f2"]],
     부동산: [["#f2c230", "#1b1b1b"], ["#1d3e79", "#ffffff"]], 교육: [["#1d3e79", "#ffffff"], ["#2f5a43", "#f1f1e8"]], 보건의료: [["#ffffff", "#1f7a4a"]], 숙박: [["#3a2a5a", "#f3e9ff"]], "예술·스포츠": [["#111214", "#7de2ff"], ["#1b1b1b", "#ff7ab8"]] };
-  const SKIP = new Set(["과학·기술", "시설관리·임대"]), hash = t => { let h = 0; for (const c of t) h = (h * 31 + c.charCodeAt(0)) | 0; return Math.abs(h); };
-  let STO = null, grp = null, c0 = null, n = 0;
+  const SKIP = new Set(["과학·기술", "시설관리·임대"]), SHOP = new Set(["음식", "소매", "수리·개인", "보건의료", "예술·스포츠"]), hash = t => { let h = 0; for (const c of t) h = (h * 31 + c.charCodeAt(0)) | 0; return Math.abs(h); };
+  let STO = null, grp = null, c0 = null, n = 0, VC = null; const RC = new THREE.Raycaster();
   fetch("data/stores.json").then(r => r.json()).then(j => { STO = j.b; }).catch(() => {});
   const BRAND = [   // 체인점: 간판 대표 색과 표기(모양은 단순화). [이름 패턴, 바탕, 글자, 바꿔 쓸 앞부분]
     [/^지에스25|^GS25/i, "#ffffff", "#0072bc", ["지에스25", "GS25"]], [/^씨유/, "#652d90", "#ffffff", ["씨유", "CU "]], [/^세븐일레븐/, "#ffffff", "#008163"], [/^이마트24/, "#3d3d3d", "#ffd400"],
@@ -671,8 +671,9 @@ const SIGN = (() => {   // 실제 상호 간판: 소상공인시장진흥공단 
   function cell(i, name, sub, cat, vert) { const BR = BRAND.find(q => q[0].test(name)); if (BR && BR[3]) name = name.replace(BR[3][0], BR[3][1]).replace(/\s+/g, " ").trim();
     const x = (i % COLS) * CW, y = Math.floor(i / COLS) * CH, P = STY[cat] || STY["소매"], [bg, fg] = BR ? [BR[1], BR[2]] : P[hash(name) % P.length], F = z => `800 ${z}px "Pretendard","Malgun Gothic",sans-serif`;
     g.save(); g.fillStyle = bg; g.fillRect(x, y, CW, CH); g.strokeStyle = "rgba(0,0,0,.28)"; g.lineWidth = 3; g.strokeRect(x + 1.5, y + 1.5, CW - 3, CH - 3); g.fillStyle = fg; g.textAlign = "center"; g.textBaseline = "middle";
-    if (vert) { const ch = [...name.replace(/\s+/g, "")].slice(0, 7), st = Math.min(36, (CW - 20) / ch.length); g.font = F(Math.floor(Math.min(st * 0.92, 40)));   // 세로 간판: 글자를 세워 위→아래로
-      ch.forEach((c, k) => { g.save(); g.translate(x + 10 + st * (k + 0.5), y + CH / 2); g.rotate(-Math.PI / 2); g.fillText(c, 0, 2); g.restore(); }); }
+    if (vert) { const ch = [...name.replace(/\s+/g, "")].slice(0, 6), fs = Math.floor(Math.min(46, (CW - 16) / ch.length * 0.9)), oc = VC || (VC = document.createElement("canvas")); oc.width = CH; oc.height = CW;   // 세로 간판: 세로 캔버스에 글자를 바로 세워 위→아래로 쓴 뒤 칸에 돌려 넣음
+      const o = oc.getContext("2d"); o.fillStyle = fg; o.textAlign = "center"; o.textBaseline = "middle"; o.font = F(fs); const gap = (CW - fs * ch.length) / (ch.length + 1);
+      ch.forEach((c, k) => o.fillText(c, CH / 2, gap * (k + 1) + fs * (k + 0.5) + 1, CH - 8)); g.translate(x, y + CH); g.rotate(-Math.PI / 2); g.drawImage(oc, 0, 0); }
     else { let z = sub ? 32 : 38; g.font = F(z); while (z > 14 && g.measureText(name).width > CW - 22) { z -= 2; g.font = F(z); }
       g.fillText(name, x + CW / 2, y + (sub ? 25 : CH / 2 + 2), CW - 18); if (sub) { g.font = '500 13px "Pretendard","Malgun Gothic",sans-serif'; g.globalAlpha = 0.8; g.fillText(sub, x + CW / 2, y + 52, CW - 30); } }
     g.restore(); }
@@ -696,23 +697,32 @@ const SIGN = (() => {   // 실제 상호 간판: 소상공인시장진흥공단 
     return F.slice(0, 2); }
   function build(cx, cy) { if (grp) { scene.remove(grp); grp.traverse(o => o.geometry && o.geometry.dispose()); } grp = new THREE.Group(); g.clearRect(0, 0, cv.width, cv.height);
     const d2 = b => (b.cx - cx) ** 2 + (b.cy - cy) ** 2, near = B.filter(b => STO[b.ix] && b.h >= 3 && d2(b) < (LOW ? 150 : 230) ** 2).sort((a, c) => d2(a) - d2(c));
-    const P = [], UV = [], box = []; let i = 0;
+    const P = [], UV = [], box = [], PL = []; let i = 0;
+    // 벽 확인: 간판 뒤 1.6m 안에 그 건물 모형 면이 실제로 있는지(층이 들어간 건물·모서리에서 허공에 뜨는 것 막기)
+    const RMAT = new THREE.MeshBasicMaterial({ side: THREE.DoubleSide }), geoOf = b => b.meshes && b.meshes.length ? b.meshes : b.parts && b.parts.length ? (b._rm || (b._rm = b.parts.filter(t => t.g && t.g.isBufferGeometry).map(t => new THREE.Mesh(t.g, RMAT)))) : null;
+    const onWall = (b, x, y, nx, ny, z) => { const M = geoOf(b); if (!M || !M.length) return true; RC.set(new THREE.Vector3(x + nx * 0.6, z, -(y + ny * 0.6)), new THREE.Vector3(-nx, 0, ny)); RC.far = 2.2; return RC.intersectObjects(M, true).length > 0; };
+    // 겹침 검사: 이미 단 간판과 같은 방향 벽면(1m 안)에서 가로 범위·높이가 겹치면 달지 않음(이웃 건물·같은 건물 두 벽 포함)
+    const clash = (x, y, nx, ny, w, z0, h) => PL.some(q => !q.v && nx * q.nx + ny * q.ny > 0.7 && Math.abs((x - q.x) * nx + (y - q.y) * ny) < 1.0 && Math.abs((x - q.x) * -ny + (y - q.y) * nx) < (w + q.w) / 2 + 0.15 && z0 < q.z0 + q.h && q.z0 < z0 + h);
     const addBox = (x, y, z0, w, h, d, ang) => { const q = new THREE.BoxGeometry(w, h, d); q.rotateY(ang); q.translate(x, z0 + h / 2, -y); box.push(q.toNonIndexed()); };
     for (const b of near) { if (i >= NC - 4) break; const S = STO[b.ix].filter(t => !SKIP.has(t[1])); if (!S.length) continue; const F = facades(b); if (!F.length) continue;
-      const g1 = S.filter(t => t[4] === "1" || (t[4] === "" && b.f <= 1)), up = S.filter(t => /^[2-6]$/.test(t[4])), fh = b.f > 1 ? b.h / b.f : b.h, z0 = Math.max(2.4, Math.min(4.0, fh - 0.95)); let k = 0;
+      const g1 = S.filter(t => t[4] === "1" || (t[4] === "" && b.f <= 1)).concat(S.filter(t => t[4] === "" && b.f > 1 && SHOP.has(t[1]))), /* 층 미기재 업체: 가게 업종(음식·소매·수리·개인·보건의료·예술·스포츠)은 1층으로 봄(가정) */ up = S.filter(t => /^[2-6]$/.test(t[4])), fh = b.f > 1 ? b.h / b.f : b.h, z0 = Math.max(2.4, Math.min(4.0, fh - 0.95)); let k = 0;
       for (const f of F) { const take = g1.slice(k, k + Math.max(1, Math.min(3, Math.floor(f.L / 4)))); k += take.length; if (!take.length) break;
-        const ang = Math.atan2(f.nx, -f.ny), tx = -f.ny, ty = f.nx, w = Math.min(4.6, Math.max(1.6, f.L * 0.92 / take.length - 0.3)), step = w + 0.3, half = Math.max(0, f.L / 2 - w / 2 - 0.1);
-        const offs = take.map((_, j) => f.ent ? f.a0 + (j % 2 ? 1 : -1) * Math.ceil(j / 2) * step : -f.L * 0.46 + (f.L * 0.92 / take.length) * (j + 0.5));   // 출입구 벽: 첫 간판은 출입구 위, 나머지는 양옆으로
-        for (let j = 0; j < take.length && i < NC; j++) { const t = take[j], a = Math.max(-half, Math.min(half, offs[j])), x = f.mx + tx * a, y = f.my + ty * a;
+        const ang = Math.atan2(f.nx, -f.ny), tx = -f.ny, ty = f.nx, w = Math.min(4.6, Math.max(1.6, f.L * 0.92 / take.length - 0.3)), step = w + 0.3;
+        const nT = Math.max(1, Math.min(take.length, Math.floor((f.L * 0.96 + 0.3) / step))); k -= take.length - nT; take.length = nT;   // 벽에 다 안 들어가면 남는 업체는 다음 벽으로
+        const tot = nT * step - 0.3, lim = Math.max(0, f.L / 2 - tot / 2 - 0.1), c = Math.max(-lim, Math.min(lim, f.ent ? f.a0 : 0));   // 간판 줄을 한 덩어리로: 출입구 벽은 출입구를 가운데로, 벽 끝을 넘으면 통째로 밀어 넣음
+        const offs = take.map((_, j) => c - tot / 2 + w / 2 + j * step);
+        for (let j = 0; j < take.length && i < NC; j++) { const t = take[j], a = offs[j], x = f.mx + tx * a, y = f.my + ty * a;
+          if (clash(x, y, f.nx, f.ny, w, z0 - 0.04, 0.9) || !onWall(b, x, y, f.nx, f.ny, z0 + 0.4)) continue; PL.push({ x, y, nx: f.nx, ny: f.ny, w: w + 0.12, z0: z0 - 0.04, h: 0.9 });
           cell(i, t[0], t[2], t[1], false); addBox(x + f.nx * 0.09, y + f.ny * 0.09, z0 - 0.04, w + 0.12, 0.9, 0.18, ang); quad(P, UV, { x: x + f.nx * 0.185, y: y + f.ny * 0.185 }, { x: f.nx, y: f.ny }, w, 0.82, z0, i++, false); } }
       const f = F[0], ang = Math.atan2(f.nx, -f.ny);
       for (let j = 0; j < Math.min(2, up.length) && i < NC; j++) { const t = up[j], fl = +t[4], sd = j ? -1 : 1, ex = f.mx - f.ny * sd * (f.L / 2 - 0.4), ey = f.my + f.nx * sd * (f.L / 2 - 0.4), zz = Math.max(z0 + 1.2, fh * (fl - 1) + 0.4), h = Math.min(2.4, fh * 0.9);
-        if (zz + h > b.h) continue; cell(i, t[0], "", t[1], true); addBox(ex + f.nx * 0.55, ey + f.ny * 0.55, zz, 0.16, h + 0.1, 0.9, ang + Math.PI / 2);
+        if (zz + h > b.h || !onWall(b, ex, ey, f.nx, f.ny, zz + 0.2) || !onWall(b, ex, ey, f.nx, f.ny, zz + h - 0.2)) continue; const vx = ex + f.nx * 0.55, vy = ey + f.ny * 0.55;
+        if (PL.some(q => q.v && Math.hypot(vx - q.x, vy - q.y) < 1.3 && zz < q.z0 + q.h && q.z0 < zz + h)) continue; PL.push({ x: vx, y: vy, nx: f.nx, ny: f.ny, w: 0, z0: zz, h, v: true, ix: b.ix }); cell(i, t[0], "", t[1], true); addBox(ex + f.nx * 0.55, ey + f.ny * 0.55, zz, 0.16, h + 0.1, 0.9, ang + Math.PI / 2);
         for (const sg of [1, -1]) quad(P, UV, { x: ex + f.nx * 0.55 - f.ny * 0.085 * sg, y: ey + f.ny * 0.55 + f.nx * 0.085 * sg }, { x: -f.ny * sg, y: f.nx * sg }, 0.82, h, zz + 0.05, i, true); i++; } }
     tex.needsUpdate = true;
     if (P.length) { const q = new THREE.BufferGeometry(); q.setAttribute("position", new THREE.Float32BufferAttribute(P, 3)); q.setAttribute("uv", new THREE.Float32BufferAttribute(UV, 2)); q.computeVertexNormals(); const m = new THREE.Mesh(q, mat); m.receiveShadow = true; grp.add(m); }
     if (box.length) { const m = new THREE.Mesh(mergeGeometries(box), fmat); m.castShadow = m.receiveShadow = true; grp.add(m); }
-    scene.add(grp); c0 = { x: cx, y: cy }; n = i; window.__signs = i; window.__signGrp = grp; }
+    scene.add(grp); c0 = { x: cx, y: cy }; n = i; window.__signs = i; window.__signGrp = grp; window.__signPL = PL; }
   function tick() { if (STO && (!c0 || Math.hypot(player.x - c0.x, player.y - c0.y) > 120)) build(player.x, player.y); }
   return { tick, get n() { return n; } }; })();
 // 가로등(큰길 양쪽 30m) · 전봇대(골목 28m) · 전선
