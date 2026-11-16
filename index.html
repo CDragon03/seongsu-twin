@@ -1019,8 +1019,8 @@ function drawBase() {
 }
 drawBase();
 let mapR = 160, FAC_ON = true;
-const FAC_STYLE = { fire: ["#d93a2b", "119"], police: ["#1f4fa8", "경찰"], outdoor: ["#2e9e5b", "대피"], housing: ["#7a5bd1", "임시"], school: ["#e0a100", "스쿨존"] };
-const FAC_LIST = [...(city.facilities || []).map(f => ({ k: f.k, n: f.n, x: f.x, y: f.y })), ...(city.shelters || []).map(o => ({ k: o.k, n: o.n, x: o.x, y: o.y })), ...((city.official && city.official.sz) || []).filter((z, i, A) => !A.slice(0, i).some(q => Math.hypot(q[0] - z[0], q[1] - z[1]) < 8)).map(z => ({ k: "school", n: z[2] + " " + z[3] + " 어린이보호구역", x: z[0], y: z[1] }))];
+const FAC_STYLE = { fire: ["#d93a2b", "119"], police: ["#1f4fa8", "경찰"], outdoor: ["#2e9e5b", "대피"], housing: ["#7a5bd1", "임시"], school: ["#e0a100", "스쿨존"], pcam: ["#5b6470", "단속"] };
+const FAC_LIST = [...(city.facilities || []).map(f => ({ k: f.k, n: f.n, x: f.x, y: f.y })), ...(city.shelters || []).map(o => ({ k: o.k, n: o.n, x: o.x, y: o.y })), ...((city.official && city.official.sz) || []).filter((z, i, A) => !A.slice(0, i).some(q => Math.hypot(q[0] - z[0], q[1] - z[1]) < 8)).map(z => ({ k: "school", n: z[2] + " " + z[3] + " 어린이보호구역", x: z[0], y: z[1] })), ...((city.official && city.official.pcam) || []).filter(c => Math.abs(c[0]) < 2500 && Math.abs(c[1]) < 2500).map(c => ({ k: "pcam", n: "불법주정차 단속 CCTV " + c[2], x: c[0], y: c[1] }))];   // 단속 CCTV: 서울 열린데이터광장 OA-20475
 const FAC_TEX = {}; for (const [k, [c, t]] of Object.entries(FAC_STYLE)) { const cv = document.createElement("canvas"); cv.width = cv.height = 128; const g = cv.getContext("2d");
   g.fillStyle = "#fff"; g.beginPath(); g.arc(64, 56, 54, 0, 7); g.fill(); g.fillStyle = c; g.beginPath(); g.arc(64, 56, 46, 0, 7); g.fill(); g.beginPath(); g.moveTo(48, 100); g.lineTo(80, 100); g.lineTo(64, 126); g.closePath(); g.fillStyle = "#fff"; g.fill();
   g.fillStyle = "#fff"; g.font = `800 ${t.length > 2 ? 34 : 38}px "Pretendard","Malgun Gothic",sans-serif`; g.textAlign = "center"; g.textBaseline = "middle"; g.fillText(t, 64, 58); FAC_TEX[k] = new THREE.CanvasTexture(cv); FAC_TEX[k].colorSpace = THREE.SRGBColorSpace; }
@@ -1547,9 +1547,9 @@ const BINFO = window.BINFO = (() => {
     if (!STO) { try { const j = await (await fetch("data/stores.json")).json(); STO = j.b; STO_SRC = j.src; } catch (e) { STO = {}; } }
     cur = b; floorSel = null; const tb = document.getElementById("top"); if (tb && innerWidth > 640) el.style.top = Math.round(tb.getBoundingClientRect().bottom + 12) + "px"; el.classList.add("on"); outline(b); render(); }
   // ── 지하철역: 서울 열린데이터광장 「지하철 실시간 도착정보」(중계 서버 경유, 인증키는 중계 서버에만) ──
-  const SUBWAY_API = location.hostname === "localhost" || location.hostname === "127.0.0.1" ? "http://localhost:8797/arrival/" : (window.SUBWAY_PROXY || "");
+  const SUBWAY_API = /[?&]tt=1/.test(location.search) ? "" : location.hostname === "localhost" || location.hostname === "127.0.0.1" ? "http://localhost:8797/arrival/" : (window.SUBWAY_PROXY || "");   /* ?tt=1: 시간표 화면 시험 */
   const LINE = { "1002": ["2호선", "#00a84d"], "1075": ["수인분당선", "#f5a200"], "1001": ["1호선", "#0052a4"], "1007": ["7호선", "#747f00"], "1005": ["5호선", "#996cac"] };
-  let stTimer = null, curSt = null;
+  let stTimer = null, curSt = null, TT = null;
   async function stRender() { const stn = curSt; if (!stn) return; const nm = stn.name;
     let body = `<p style="color:var(--muted);margin:0">불러오는 중…</p>`, list = null, err = "";
     if (!SUBWAY_API) err = "실시간 도착 정보는 중계 서버를 연결하면 표시됩니다(준비 중).";
@@ -1560,7 +1560,14 @@ const BINFO = window.BINFO = (() => {
         return `<div style="border:1px solid var(--line);border-radius:10px;padding:10px 12px"><div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><span style="background:${ln[1]};color:#fff;border-radius:99px;padding:2px 9px;font-size:12px;font-weight:700">${ln[0]}</span><b>${esc(dir || ud)}</b><span style="color:var(--muted);font-size:12px">${esc(ud)}</span></div>
           ${L.slice(0, 3).map(a => `<div style="display:flex;justify-content:space-between;gap:8px;padding:4px 0;border-top:1px solid var(--line)"><span>${esc((a.trainLineNm || "").split(" - ")[0])}${a.btrainSttus ? ` <span style="color:var(--faint);font-size:12px">${esc(a.btrainSttus)}</span>` : ""}</span><b style="color:${+a.barvlDt > 0 && +a.barvlDt < 90 ? "#ffcf4a" : "var(--text)"}">${esc(a.arvlMsg2 || "")}</b></div>`).join("")}</div>`; }).join("");
       body += `<p class="src">출처: 서울 열린데이터광장 「서울시 지하철 실시간 도착정보」 · 받은 시각 ${esc(list[0].recptnDt || "")} · 20초마다 새로 받음</p>`; }
-    else body = `<p style="color:var(--muted);margin:0">${esc(err)}</p><p class="src">출처: 서울 열린데이터광장 「서울시 지하철 실시간 도착정보」</p>`;
+    else { if (!TT) { try { TT = await (await fetch("data/timetable.json")).json(); } catch (e) { TT = { st: {} }; } } if (curSt !== stn) return;
+      const T = TT.st[nm] && Object.values(TT.st[nm]).some(a => a.length) ? TT.st[nm] : null, now = new Date(), dw = now.getDay(), wk = dw === 0 ? "3" : dw === 6 ? "2" : "1", sec = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
+      const toS = t => { const [h, m, s2] = (t || "0:0:0").split(":").map(Number); return h * 3600 + m * 60 + (s2 || 0); };
+      if (T) body = [["1", "내선(상행)"], ["2", "외선(하행)"]].map(([io, lab]) => { const L = (T[wk + io] || []).map(r => [toS(r[0]), r[0], r[1]]).filter(r => r[0] >= sec).sort((a, c) => a[0] - c[0]).slice(0, 3);
+          return `<div style="border:1px solid var(--line);border-radius:10px;padding:10px 12px"><div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><span style="background:#00a84d;color:#fff;border-radius:99px;padding:2px 9px;font-size:12px;font-weight:700">2호선</span><b>${lab}</b></div>
+            ${L.length ? L.map(r => { const m = Math.round((r[0] - sec) / 60); return `<div style="display:flex;justify-content:space-between;gap:8px;padding:4px 0;border-top:1px solid var(--line)"><span>${esc(r[2] || "")}행</span><b style="color:${m <= 1 ? "#ffcf4a" : "var(--text)"}">${r[1].slice(0, 5)} · ${m <= 0 ? "곧" : m + "분 후"}</b></div>`; }).join("") : `<div style="color:var(--muted)">오늘 남은 열차가 없습니다</div>`}</div>`; }).join("")
+          + `<p style="margin:0;color:var(--muted);font-size:12.5px">시간표 기준 예정 시각입니다(지연은 반영 안 됨). ${wk === "1" ? "평일" : wk === "2" ? "토요일" : "휴일"} 시간표 · 공휴일은 휴일 시간표가 맞습니다.</p><p class="src">출처: ${esc(TT.src)}${SUBWAY_API ? " · 실시간: " + esc(err) : ""}</p>`;
+      else body = `<p style="color:var(--muted);margin:0">${esc(err)}</p><p style="color:var(--muted);margin:0">이 역(${esc(stn.line || "")})은 서울교통공사 시간표 자료에 없어 예정 시각도 보여 드릴 수 없습니다.</p><p class="src">출처: 서울 열린데이터광장</p>`; }
     el.innerHTML = `<header><small>지하철역 · ${esc(stn.line || "")}</small><h3>${esc(nm)}역</h3><small>${esc(stn.en || "")}</small><button class="x" aria-label="닫기">×</button></header><div class="bd">${body}</div>`; }
   function openStation(stn) { intExit(); clearHL(); cur = null; curSt = stn; const tb = document.getElementById("top"); if (tb && innerWidth > 640) el.style.top = Math.round(tb.getBoundingClientRect().bottom + 12) + "px"; el.classList.add("on");
     clearInterval(stTimer); stRender(); stTimer = setInterval(stRender, 20000); }
