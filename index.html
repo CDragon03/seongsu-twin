@@ -3050,7 +3050,7 @@ body.hudOn #hudL,body.hudOn #hudR{display:flex} body.hudOn #out{max-height:calc(
 .hair{display:grid;grid-template-columns:repeat(3,1fr);gap:7px}.hair div{background:rgba(255,255,255,.03);border-radius:8px;padding:6px 8px}.hair b{display:block;font-size:17px}.hair span{font-size:10.5px;color:#8e9aa4}`;
   document.head.appendChild(st);
   const L = document.createElement("div"), R = document.createElement("div"); L.id = "hudL"; R.id = "hudR"; document.body.append(L, R);
-  L.innerHTML = `<div class="hp" id="hP1"><h4>지금 성수카페거리<em>불러오는 중</em></h4></div><div class="hp grow"><h4>12시간 혼잡 예측<em>명(구간 가운데)</em></h4><div class="hcv"><canvas id="hC1"></canvas></div></div>
+  L.innerHTML = `<div class="hp" id="hP1"><h4>지금 성수카페거리에 있는 사람(추정)<em>불러오는 중</em></h4></div><div class="hp grow"><h4>12시간 혼잡 예측<em>명(구간 가운데)</em></h4><div class="hcv"><canvas id="hC1"></canvas></div></div>
     <div class="hp grow"><h4>업종 분포<em id="hCatN"></em></h4><div class="hcv"><canvas id="hC2"></canvas></div></div><div class="hp" id="hP4"></div>`;
   R.innerHTML = `<div class="hp"><h4>건물 주용도<em id="hUseN"></em></h4><div class="hcv"><canvas id="hC3"></canvas></div></div><div class="hp"><h4>전기 사용량 많은 곳<em>건축HUB · kWh</em></h4><div class="hcv"><canvas id="hC4"></canvas></div></div>`;
   const h = v => String(v ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])), n0 = v => v == null ? "-" : Math.round(v).toLocaleString("ko-KR");
@@ -3070,8 +3070,8 @@ body.hudOn #hudL,body.hudOn #hudR{display:flex} body.hudOn #out{max-height:calc(
         scales: { x: { grid: { display: false }, ticks: { font: { size: 9.5 } } }, y: { grid, ticks: { font: { size: 10 }, callback: v => v >= 1e6 ? v / 1e6 + "백만" : v / 1e3 + "천" } } } } }); }
   function render() { const d = window.LIVE && LIVE.data, a = d && d.areas && d.areas["성수카페거리"]; if (!a) return;
     const [col, k] = LVC[a.lvl] || LVC["보통"];
-    document.getElementById("hP1").innerHTML = `<h4>지금 성수카페거리<em>${h((a.time || "").slice(11))} 기준</em></h4><div class="hrow"><div class="hbig">${n0(a.min)}<small>~${n0(a.max)}명</small></div><span class="htag" style="background:${col}2e;color:${col}">${h(a.lvl)}</span></div>
-      <div class="hgauge"><i style="width:${k * 100}%"></i></div><div class="hmini">상주 <b>${h(a.resnt)}%</b> · 남 <b>${h(a.male)}%</b>${a.cmrcl && a.cmrcl.lvl ? ` · 상권 <b>${h(a.cmrcl.lvl)}</b>` : ""}${a.wx && a.wx.temp != null ? ` · <b>${h(a.wx.temp)}°</b>` : ""}</div>`;
+    document.getElementById("hP1").innerHTML = `<h4>지금 성수카페거리에 있는 사람(추정)<em>${h((a.time || "").slice(11))}</em></h4><div class="hrow"><div class="hbig">${n0(a.min)}<small>~${n0(a.max)}명</small></div><span class="htag" style="background:${col}2e;color:${col}">${h(a.lvl)}</span></div>
+      <div class="hgauge"><i style="width:${k * 100}%"></i></div><div class="hmini" title="서울시 실시간 도시데이터: KT 휴대폰 신호로 추정한 구역 안 인구 범위(5분 단위)">상주 <b>${h(a.resnt)}%</b> · 남 <b>${h(a.male)}%</b>${a.cmrcl && a.cmrcl.lvl ? ` · 상권 <b>${h(a.cmrcl.lvl)}</b>` : ""}${a.wx && a.wx.temp != null ? ` · <b>${h(a.wx.temp)}°</b>` : ""}</div>`;
     const air = d.air || {}, rd = a.road || {};
     document.getElementById("hP4").innerHTML = `<h4>대기·도로<em>성동구 측정소 · 성수카페거리</em></h4><div class="hair"><div><b>${h(air.pm10 ?? "-")}</b><span>미세먼지</span></div><div><b>${h(air.pm25 ?? "-")}</b><span>초미세 · ${h(air.grade || "")}</span></div><div><b>${h(rd.spd ?? "-")}</b><span>km/h · ${h(rd.idx || "")}</span></div></div>`;
     const F = a.fcst || [], key = JSON.stringify(F);
