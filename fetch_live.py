@@ -22,7 +22,7 @@ for a in ["성수카페거리", "서울숲공원", "뚝섬역"]:
          "male": num(p.get("MALE_PPLTN_RATE")), "ages": [num(p.get(f"PPLTN_RATE_{k}")) for k in (0, 10, 20, 30, 40, 50, 60, 70)], "resnt": num(p.get("RESNT_PPLTN_RATE")),
          "fcst": [[f.get("FCST_TIME"), f.get("FCST_CONGEST_LVL"), num(f.get("FCST_PPLTN_MIN")), num(f.get("FCST_PPLTN_MAX"))] for f in (p.get("FCST_PPLTN") or [])],
          "road": {"idx": r.get("ROAD_TRAFFIC_IDX"), "spd": r.get("ROAD_TRAFFIC_SPD"), "msg": r.get("ROAD_MSG"), "time": r.get("ROAD_TRAFFIC_TIME")},
-         "wx": {"temp": num(w.get("TEMP")), "hum": num(w.get("HUMIDITY")), "pm10": num(w.get("PM10")), "pm25": num(w.get("PM25")), "air": w.get("AIR_IDX"), "pcp": w.get("PCP_MSG"), "time": w.get("WEATHER_TIME")},
+         "wx": {"temp": num(w.get("TEMP")), "hum": num(w.get("HUMIDITY")), "pm10": num(w.get("PM10")), "pm25": num(w.get("PM25")), "air": w.get("AIR_IDX"), "pcp": w.get("PCP_MSG"), "pty": w.get("PRECPT_TYPE"), "pre": w.get("PRECIPITATION"), "sky": ((w.get("FCST24HOURS") or [{}])[0] or {}).get("SKY_STTS"), "time": w.get("WEATHER_TIME")},
          "prk": [[q.get("PRK_NM"), num(q.get("CPCTY")), num(q.get("CUR_PRK_CNT")), num(q.get("LAT")), num(q.get("LNG")), q.get("CUR_PRK_TIME")] for q in (c.get("PRK_STTS") or [])],
          "bike": [[q.get("SBIKE_SPOT_NM"), num(q.get("SBIKE_PARKING_CNT")), num(q.get("SBIKE_RACK_CNT")), num(q.get("SBIKE_X")), num(q.get("SBIKE_Y"))] for q in (c.get("SBIKE_STTS") or [])],
          "acdnt": [[q.get("ACDNT_TYPE"), q.get("ACDNT_DTYPE"), q.get("ACDNT_INFO"), num(q.get("ACDNT_X")), num(q.get("ACDNT_Y")), q.get("ACDNT_OCCR_DT"), q.get("EXP_CLR_DT")] for q in (c.get("ACDNT_CNTRL_STTS") or []) if q.get("ACDNT_INFO")],

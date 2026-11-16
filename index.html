@@ -1078,8 +1078,8 @@ let DCL_T = 1;
 function declutter(dt) {   // 떠 있는 표지는 내 위치(항공 보기에선 화면 가운데) 가까이 있을 때만: 시설 90m · 주차장·따릉이 180m · 지하철역 400m. 미니맵에는 다 그대로
   if ((DCL_T += dt || 0.016) < 0.3) return; DCL_T = 0;
   const cp = window.__sky ? window.__sky.position : camera.position, dir = camera.getWorldDirection(new THREE.Vector3()), tt = dir.y < -0.05 ? Math.min(500, -cp.y / dir.y) : 120;   // 기준 = 카메라가 보는 땅 지점(항공 보기에서 화면을 옮겨도 따라감)
-  const px = cp.x + dir.x * tt, py = -(cp.z + dir.z * tt), near = (o, r) => { const dx = o.position.x - px, dy = -o.position.z - py, ex = o.position.x - cp.x, ez = o.position.z - cp.z; return dx * dx + dy * dy < r * r && ex * ex + ez * ez < (r * 3) ** 2; };   /* 카메라에서도 멀면 숨김 */
-  for (const sp of FAC_SPR) sp.visible = FAC_ON && near(sp, 90);
+  const px = cp.x + dir.x * tt, py = -(cp.z + dir.z * tt), near = (o, r) => { const dx = o.position.x - px, dy = -o.position.z - py, ex = o.position.x - cp.x, ez = o.position.z - cp.z, ey = o.position.y - cp.y; return dx * dx + dy * dy < r * r && ex * ex + ez * ez + ey * ey < (r * 3) ** 2; };   /* 카메라에서도 멀면 숨김(높이 포함: 항공 보기로 높이 오르면 아이콘이 줄어듦) */
+  for (const sp of FAC_SPR) sp.userData.near = near(sp, 90);   /* 실제 표시는 아래 그리기 단계에서(항공·비행일 때만) */
   for (const sp of STN_SPR) sp.visible = near(sp, 400);
   SIGN.tick(); if (window.HUD) HUD.show();
   if (window.LIVE && LIVE.grp) for (const sp of LIVE.grp.children) sp.visible = near(sp, 180);
@@ -2931,6 +2931,15 @@ let PAUSED = false, SPK = 1;
 // ══ 지금 날씨: MET Norway(노르웨이 기상청) 공개 예보 API, 키 없음, CC BY 4.0 — 성수동 좌표만 보냄 ══
 async function nowWeather(apply = true) {
   const el = $("nowWx");
+  for (let k = 0; k < 15 && !(window.LIVE && LIVE.data); k++) await new Promise(r => setTimeout(r, 200));   // 서울 실시간 도시데이터(기상청 관측: 강수 형태·하늘 상태)를 먼저 씀
+  const SW = window.LIVE && LIVE.data && LIVE.data.areas && (LIVE.data.areas["성수카페거리"] || {}).wx;
+  if (SW && SW.pty) { const pt = SW.pty, w = /눈/.test(pt) && !/비/.test(pt) ? "snow" : /비|눈/.test(pt) ? "rain" : "clear", sky = SW.sky || "";
+    const now = new Date(), m = now.getMonth(), alt = sunPos(new Date(now.getFullYear(), m, now.getDate()), now.getHours() + now.getMinutes() / 60).alt * 180 / Math.PI;
+    const t = alt < -3 ? "night" : alt < 8 ? "dusk" : "day", se = m >= 2 && m <= 4 ? "spring" : m >= 5 && m <= 7 ? "summer" : m >= 8 && m <= 10 ? "autumn" : "winter";
+    const ko = w === "clear" ? (sky || "맑음") : pt;
+    el.textContent = `지금 성수동 ${SW.temp != null ? Math.round(SW.temp) + "°C " : ""}${ko}`; el.title = "날씨: 서울 실시간 도시데이터(기상청 관측) " + (SW.time || "");
+    if (apply) { ENV.season = se; ENV.weather = w; ENV.time = t; ENV.overcast = /흐림|구름많음/.test(sky) && w === "clear"; if (w !== "snow" && se !== "winter") ENV.snow = 0; if (!S || S !== SC.sun) applyEnv(); }
+    return; }
   try { const r = await fetch("https://api.met.no/weatherapi/locationforecast/2.0/compact?lat=37.543&lon=127.054"); const j = await r.json(), ts = j.properties.timeseries[0], d = ts.data.instant.details;
     const n1 = ts.data.next_1_hours || ts.data.next_6_hours || {}, sym = (n1.summary && n1.summary.symbol_code) || "";
     const w = /snow|sleet/.test(sym) ? "snow" : /rain|shower|drizzle/.test(sym) ? "rain" : "clear";
@@ -3016,7 +3025,7 @@ function frame(fixed) {
     if (sc.right !== ext) { sc.left = -ext; sc.right = ext; sc.top = ext; sc.bottom = -ext; sc.far = wide ? 1600 : 500; sc.updateProjectionMatrix(); sun.shadow.mapSize.set(wide ? 4096 : 2048, wide ? 4096 : 2048); if (sun.shadow.map) { sun.shadow.map.dispose(); sun.shadow.map = null; } }
     const fc = fly ? new THREE.Vector3(camera.position.x, 0, camera.position.z) : tgt, sp = S && S.sp && S === SC.sun ? S.sp : null;
     if (sp) sun.position.set(fc.x + Math.sin(sp.az) * Math.cos(sp.alt) * 600, Math.max(5, Math.sin(sp.alt) * 600), fc.z - Math.cos(sp.az) * Math.cos(sp.alt) * 600); else if (SUN_DIR) sun.position.set(fc.x + SUN_DIR.x * 600, SUN_DIR.y * 600, fc.z + SUN_DIR.z * 600); else sun.position.set(fc.x - 120 * (wide ? 3 : 1), 160 * (wide ? 3 : 1), fc.z + 80 * (wide ? 3 : 1));
-    sun.target.position.copy(fc); shT += dt || 0.016; if (shT > 0.25 || shP.distanceToSquared(sun.position) > 1) { renderer.shadowMap.needsUpdate = true; shT = 0; shP.copy(sun.position); } } MK_ME.visible = air && !(S && S.air); declutter(dt); if (window.__sky && window.__sky.material.uniforms.uTime) window.__sky.material.uniforms.uTime.value = performance.now() / 1000; { const cpos = camera.position; for (const sp of FAC_SPR) { sp.visible = FAC_ON && (air || fly) && !(S && S.pano); const d = cpos.distanceTo(sp.position); sp.scale.setScalar(Math.max(6, d * 0.045)); sp.position.y = air ? Math.max(22, d * 0.04) : 22; } } { const k = air || fly ? Math.min(4.5, Math.max(1, (air ? dist : camera.position.y) / 45)) : 1; PS.set(k, k, k); }
+    sun.target.position.copy(fc); shT += dt || 0.016; if (shT > 0.25 || shP.distanceToSquared(sun.position) > 1) { renderer.shadowMap.needsUpdate = true; shT = 0; shP.copy(sun.position); } } MK_ME.visible = air && !(S && S.air); declutter(dt); if (window.__sky && window.__sky.material.uniforms.uTime) window.__sky.material.uniforms.uTime.value = performance.now() / 1000; { const cpos = camera.position; for (const sp of FAC_SPR) { sp.visible = FAC_ON && (air || fly) && !(S && S.pano) && sp.userData.near !== false; const d = cpos.distanceTo(sp.position); sp.scale.setScalar(Math.max(6, d * 0.045)); sp.position.y = air ? Math.max(22, d * 0.04) : 22; } } { const k = air || fly ? Math.min(4.5, Math.max(1, (air ? dist : camera.position.y) / 45)) : 1; PS.set(k, k, k); }
     if (running && air && !fly && !(S && S.pano)) { const h = Math.max(0, camera.position.y), cl = ENV.weather === "clear";   /* 항공 보기: 안개를 카메라 높이만큼 뒤로 밀어 저녁·비·눈에도 동네가 보이게(날씨 느낌은 먼 곳에만) */
       scene.fog.near = Math.max(FOGB.near, h * (cl ? 1.6 : 1.0)); scene.fog.far = Math.max(FOGB.far, h * (cl ? 10 : 4.5) + 300); }
     else if (running && !fly && !(S && S.pano)) { scene.fog.near = FOGB.near; scene.fog.far = FOGB.far; }
