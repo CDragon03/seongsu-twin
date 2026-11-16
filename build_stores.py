@@ -32,6 +32,6 @@ for r in csv.DictReader(io.TextIOWrapper(z.open(name), encoding="utf-8-sig")):
         if hit: bi = hit[0]; st["좌표"] += 1
     if bi is None: st["못 붙임"] += 1; continue
     nm = r["상호명"].strip() + (" " + r["지점명"].strip() if r["지점명"].strip() else "")
-    out.setdefault(bi, []).append([nm, r["상권업종대분류명"], r["상권업종소분류명"], r["동정보"].strip(), r["층정보"].strip(), r["호정보"].strip()])
+    out.setdefault(bi, []).append([nm, r["상권업종대분류명"], r["상권업종소분류명"], r["동정보"].strip(), r["층정보"].strip(), r["호정보"].strip(), round(x, 1), round(y, 1)])   # 7·8번째 = 가게 좌표(지역좌표, 간판 자리용)
 json.dump({"src": f"소상공인시장진흥공단 상가(상권)정보 {ref[:4]}-{ref[4:]} (공공데이터포털, 이용 제한 없음)", "b": out}, open(os.path.join(G, "data", "stores.json"), "w", encoding="utf-8"), ensure_ascii=False, separators=(",", ":"))
 print(st, "건물", len(out), round(os.path.getsize(os.path.join(G, "data", "stores.json")) / 1048576, 2), "MB")
