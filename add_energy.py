@@ -11,5 +11,5 @@ for d in sorted(glob.glob(os.path.join(RAW, "*_*"))):
         qty = sum(float(x[1] or 0) for x in v if x[1] is not None)
         if qty <= 0: continue
         out.setdefault(os.path.basename(f)[:-5], {})[k] = [ym, round(qty)]; cnt[k] = cnt.get(k, 0) + 1
-json.dump({"src": "국토교통부 건축HUB 건물에너지정보 서비스(지번 단위 월 사용량, 전기 kWh)", "b": out}, open(os.path.join(G, "data", "energy.json"), "w", encoding="utf-8"), ensure_ascii=False, separators=(",", ":"))
+json.dump({"src": "국토교통부 건축HUB 건물에너지정보 서비스(지번 단위 월 사용량, 전기 kWh · 가스는 원자료 단위 그대로)", "b": out}, open(os.path.join(G, "data", "energy.json"), "w", encoding="utf-8"), ensure_ascii=False, separators=(",", ":"))
 print("필지", len(out), cnt)
