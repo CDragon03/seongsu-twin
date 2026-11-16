@@ -559,7 +559,8 @@ const CAR_G = (() => { const vc = (g, c) => { const n = g.attributes.position.co
   const g = mergeGeometries(P.map(p => { p.deleteAttribute("uv"); return p; })); g.computeVertexNormals(); return g; })();
 const TRAFFIC = { cars: [], parked: [] }; const YIELD = [];   /* {x,y,r}: 이 둘레에선 일반 차가 멈춤(사고 현장·사이렌 울리는 출동 차) */
 { const ALL = city.ways.filter(w => w.p.length >= 4);
-  for (const w of ALL) { if (w.w >= 4 || w.w < 2.6) continue; const L = wayLen(w.p), T = L[L.length - 1];   // 골목 주차: 한쪽 길가
+  const LEGAL_PARK = false;   /* 길가 주차: 실제 주차 구획(거주자우선주차·노상 공영주차장) 위치 자료가 들어오기 전까지 세우지 않음 — 아무 데나 세운 차가 불법 주정차처럼 보임(2026-11-16) */
+  for (const w of ALL) { if (!LEGAL_PARK || w.w >= 4 || w.w < 2.6) continue; const L = wayLen(w.p), T = L[L.length - 1];   // 골목 주차: 한쪽 길가
     for (let s = 6 + Math.random() * 8; s < T - 6; s += 6 + Math.random() * 14) { if (Math.random() < 0.45) continue; const q = wayAt(w.p, L, s, w.w - 1.1); const t = { x: q.x, y: q.y }; if (inBuilding(q.x, q.y) || collide(t, 1.0)) continue; TRAFFIC.parked.push(q); } }
   for (const w of MAJOR) { const L = wayLen(w.p), T = L[L.length - 1]; if (T < 60) continue; const n = Math.max(1, Math.round(T / 45));
     for (let k = 0; k < n; k++) TRAFFIC.cars.push({ w, L, T, s: Math.random() * T, v: 8 + Math.random() * 5, dir: Math.random() < 0.5 ? 1 : -1, lane: w.w >= 6.5 ? (Math.random() < 0.5 ? w.w * 0.25 : w.w * 0.75) : w.w * 0.5 }); }
@@ -871,7 +872,7 @@ function makeActorGLB(tint, mark) {
   const act = { timeScale: 1, _w: () => [walk && walk.getEffectiveWeight(), idle && idle.getEffectiveWeight()], get paused() { return still; }, set paused(v) { if (v === still) return; still = v; if (!idle || !walk) return;
     const [from, to] = v ? [walk, idle] : [idle, walk]; to.enabled = true; to.setEffectiveTimeScale(1); to.setEffectiveWeight(1); from.crossFadeTo(to, 0.35, true); } };
   const mixer = { update(dt) { if (idle || !still) mx.update(dt); } }; mixer.update(0.001);
-  const mk = new THREE.Mesh(MK_G, new THREE.MeshBasicMaterial({ color: mark === 0xdddddd || mark == null ? 0x7fb6e6 : mark, transparent: true, opacity: 0.8 })); mk.position.y = 3; mk.visible = false; root.add(mk);
+  const mk = new THREE.Mesh(MK_G, new THREE.MeshBasicMaterial({ color: mark === 0xdddddd || mark == null ? 0x7fb6e6 : mark, transparent: true, opacity: 0.8 })); mk.position.y = 0.06; mk.visible = false; root.add(mk);   /* 머리 위가 아니라 발밑 원판 */
   scene.add(root); return { root, mixer, act, mats, mk, body };
 }
 // ══ 차량 모델(Higgsfield · Meshy 6 로 생성, 로고 없음) — 불러오면 도형 차를 대신함 ══
@@ -962,7 +963,7 @@ function makeActor(src, tint, mark) {
     LL.piv.rotation.x = s; LR.piv.rotation.x = -s; LL.knee.rotation.x = Math.max(0, -Math.sin(ph + 0.6)) * 0.7 * (act.paused ? 0 : 1); LR.knee.rotation.x = Math.max(0, Math.sin(ph + 0.6)) * 0.7 * (act.paused ? 0 : 1);
     AL.piv.rotation.x = -s * 0.8; AR.piv.rotation.x = s * 0.8; AL.knee.rotation.x = -0.25; AR.knee.rotation.x = -0.25; body.position.y = Math.abs(Math.cos(ph)) * 0.03; } };
   mixer.update(0);
-  const mk = new THREE.Mesh(MK_G, new THREE.MeshBasicMaterial({ color: mark === 0xdddddd || mark == null ? 0x7fb6e6 : mark, transparent: true, opacity: 0.8 })); mk.position.y = 3; mk.visible = false; root.add(mk);
+  const mk = new THREE.Mesh(MK_G, new THREE.MeshBasicMaterial({ color: mark === 0xdddddd || mark == null ? 0x7fb6e6 : mark, transparent: true, opacity: 0.8 })); mk.position.y = 0.06; mk.visible = false; root.add(mk);   /* 머리 위가 아니라 발밑 원판 */
   scene.add(root); return { root, mixer, act, mats, mk, body };
 }
 function tintActor(a, hex) { for (const m of a.mats) m.color.set(hex); a.mk.material.color.set(hex === 0xffffff ? 0x7fb6e6 : hex); }
@@ -1117,7 +1118,7 @@ function moveTo(o, tx, ty, sp, dt, r = 0.4) { const dx = tx - o.x, dy = ty - o.y
 function showActor(o, moving, dt, rate) {
   const near = Math.hypot(o.x - player.x, o.y - player.y) < 140 || air; o.a.root.visible = near || air;
   o.a.root.position.copy(V(o.x, o.y, o.z || 0)); o.a.root.rotation.y = o.head + Math.PI;
-  o.a.act.paused = !moving; if (near) o.a.mixer.update(dt * rate); o.a.mk.visible = air;
+  o.a.act.paused = !moving; if (near) o.a.mixer.update(dt * rate); o.a.mk.visible = air && (dist > 160 || o.a.mk.material.color.getHex() !== 0x7fb6e6);   /* 보통 사람 표시(하늘색)는 높이 올라갔을 때만, 감염·대피 등 색 표시는 늘 */
   if (o.a.lurch && moving) { const t = performance.now() / 1000 * (o.sp || 1.5) * 2.2 + o.a.ph; o.a.inner.position.y = Math.abs(Math.sin(t)) * o.a.lurch; o.a.inner.rotation.z = Math.sin(t) * 0.1; o.a.inner.rotation.x = 0.12; }
 }
 const HASH = new Map();
@@ -2274,7 +2275,7 @@ function sirenLights(g, cols, type) {   // 지붕 경광등(빨강·파랑 번�
 const SIREN_HALO = (() => { const c = document.createElement("canvas"); c.width = c.height = 128; const g = c.getContext("2d"), gr = g.createRadialGradient(64, 64, 0, 64, 64, 64);
   gr.addColorStop(0, "rgba(255,255,255,1)"); gr.addColorStop(0.18, "rgba(255,255,255,.75)"); gr.addColorStop(0.5, "rgba(255,255,255,.18)"); gr.addColorStop(1, "rgba(255,255,255,0)"); g.fillStyle = gr; g.fillRect(0, 0, 128, 128); return new THREE.CanvasTexture(c); })();
 const EM_PL = [new THREE.PointLight(0xff2a2a, 0, 30, 1.5), new THREE.PointLight(0x2a6bff, 0, 30, 1.5)]; for (const l of EM_PL) scene.add(l);   // 경광등 빛 2개(처음부터 있어 재질 다시 컴파일 없음): 카메라에 가장 가까운 출동 차에 붙임
-const HAT = { police: [0x1f3f7a, "경찰", "#fff"], fire: [0xe8b61a, "119", "#b3130c"], ambulance: [0xf4f4f0, "구급", "#d93a2b"] };
+const HAT = { police: [0x1f3f7a, "경찰", "#fff"], fire: [0xe8b61a, "119", "#b3130c"], rescue: [0xe8501a, "구조", "#fff"], ambulance: [0xf4f4f0, "구급", "#d93a2b"] };
 function roleHat(a, kind) {   // 머리 위 모자에 역할 글자(실제 기관 휘장이 아니라 글자 표시)
   const H = HAT[kind]; if (!H || !a.body) return; const bone = a.body.getObjectByName("head_end") || a.body.getObjectByName("Head"); if (!bone) return;
   const cv = document.createElement("canvas"); cv.width = 384; cv.height = 64; const g = cv.getContext("2d"); g.fillStyle = "#" + H[0].toString(16).padStart(6, "0"); g.fillRect(0, 0, 384, 64); g.fillStyle = H[2]; g.font = '900 44px "Pretendard","Malgun Gothic",sans-serif'; g.textAlign = "center"; g.textBaseline = "middle"; for (let i = 0; i < 3; i++) g.fillText(H[1], 64 + i * 128, 34);
@@ -2503,12 +2504,12 @@ SC.crash = { hp: false, air: true, dist0: 55, tools: "큰길을 눌러 사고 �
   dispatch() {   // 사고 지점까지 길(폭 4m 이상)로 가장 가까운 기지에서 출동
     const ni = (() => { let best = -1, bd = 1e9; for (let i = 0; i < NODES.length; i++) { if (NODES[i].w < 4 || !NADJ[i].length) continue; const d = Math.hypot(NODES[i].x - this.road.x, NODES[i].y - this.road.y); if (d < bd) { bd = d; best = i; } } return best; })();
     const D = dijkstraCar([ni]); this.em = [];
-    const plan = kind => { let best = null; for (const bs of EM_BASES.filter(b => b.kind === kind)) for (let i = 0; i < NODES.length; i++) { if (!isFinite(D[i])) continue;
+    const plan = kind => { let best = null; for (const bs of EM_BASES.filter(b => kind === "fire_hq" ? b.kind === "fire" && /소방서/.test(b.name) : b.kind === kind))   /* 구조대는 소방서에 */ for (let i = 0; i < NODES.length; i++) { if (!isFinite(D[i])) continue;
         const out = Math.hypot(bs.x - NODES[i].x, bs.y - NODES[i].y) * EM_ROAD, tot = out + D[i]; if (!best || tot < best.tot) best = { bs, e: i, out, tot }; } return best; };
-    const units = [["ambulance", "fire", "구급차", [0xff2a2a, 0x2a6bff], 8], ["police", "police", "순찰차", [0xff2a2a, 0x2a6bff], 16], ["fire", "fire", "소방차(펌프)", [0xff2a2a, 0xff2a2a], 25]];
+    const units = [["ambulance", "fire", "구급차", [0xff2a2a, 0x2a6bff], 8], ["rescue", "fire_hq", "구조공작차(구조대)", [0xff2a2a, 0xff2a2a], 17], ["fire", "fire", "펌프차(경계관창)", [0xff2a2a, 0xff2a2a], 26], ["police", "police", "순찰차(교통 통제)", [0xff2a2a, 0x2a6bff], 38]];   /* 재난현장 표준작전절차 SOP 307 차량사고: 구조차·펌프차·구급차 동시 출동, 경찰에 교통통제 요청 */
     for (const [type, kind, label, cols, stopAt] of units) { const p = plan(kind); if (!p) continue;
       const path = [p.e]; while (D[path[path.length - 1]] > 0.5 && path.length < 2000) { const i = path[path.length - 1]; let nx = -1, nd = D[i]; for (const k of NADJ[i]) if (D[k] < nd) { nd = D[k]; nx = k; } if (nx < 0) break; path.push(nx); }
-      const g = vehicleGroup(type); g.visible = false; scene.add(g); this.objs.push(g); extra.push(g); const lights = sirenLights(g, cols, type);
+      const g = vehicleGroup(type); g.visible = false; scene.add(g); this.objs.push(g); extra.push(g); const lights = sirenLights(g, cols, type === "rescue" ? "fire" : type);
       const dep = EM_CALL + EM_PREP, arr = dep + p.tot / EM_V;
       const pts = path.map(i => ({ x: NODES[i].x, y: NODES[i].y })).concat([{ x: this.road.x, y: this.road.y }]), cum = [0]; for (let i = 1; i < pts.length; i++) cum.push(cum[i - 1] + Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y));
       this.em.push({ type, label, base: p.bs.name, g, lights, pts, cum, s: 0, dep, enter: dep + p.out / EM_V, arr, stopAt, done: false, km: p.tot / 1000 }); } },
