@@ -1,4 +1,4 @@
-# 바닥 사진(정사영상) 범위 안인데 건물이 없던 곳(북쪽 띠 등)에 건물통합정보 윤곽으로 건물을 덧붙임(city.json 끝에 추가 → 기존 건물 번호 그대로)
+# 바닥 사진(정사영상, 넓은 사진 ground2 가 있으면 그 범위) 안인데 건물이 없던 곳(북쪽 띠 등)에 건물통합정보 윤곽으로 건물을 덧붙임(city.json 끝에 추가 → 기존 건물 번호 그대로)
 # 실행: python -I append_strip.py <AL_D010 shp(확장자 없이)>   (build_data.py 를 다시 돌린 뒤에는 이것도 다시)
 import json, math, os, random, sys, shapefile
 from pyproj import Transformer
@@ -10,7 +10,7 @@ LAT0, LON0 = 37.543, 127.0535; KX = math.cos(math.radians(LAT0)) * 111320.0; KY 
 inv = Transformer.from_crs(5186, 4326, always_xy=True); fwd = Transformer.from_crs(4326, 5186, always_xy=True)
 city = json.load(open(P, encoding="utf-8")); B = city["buildings"]
 B = [b for b in B if not b.get("strip")]   # 다시 돌릴 때 앞서 붙인 것 빼고
-c = city["ground"]["corners"]; X0, X1 = max(c["sw"][0], c["nw"][0]), min(c["se"][0], c["ne"][0]); Y0, Y1 = max(c["sw"][1], c["se"][1]), min(c["nw"][1], c["ne"][1])
+c = (city.get("ground2") or city["ground"])["corners"]; X0, X1 = max(c["sw"][0], c["nw"][0]), min(c["se"][0], c["ne"][0]); Y0, Y1 = max(c["sw"][1], c["se"][1]), min(c["nw"][1], c["ne"][1])
 to5186 = lambda x, y: fwd.transform(LON0 + x / KX, LAT0 + y / KY)
 (ax, ay), (bx, by) = to5186(X0, Y0), to5186(X1, Y1)
 old = [Polygon([(b["p"][i], b["p"][i + 1]) for i in range(0, len(b["p"]), 2)]).buffer(0) for b in B]; tree = STRtree(old)

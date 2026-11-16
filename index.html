@@ -59,6 +59,18 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
 #route li span{font-size:12.5px;color:var(--muted);white-space:nowrap;cursor:pointer}
 #route li.now button{width:34px;height:34px;margin-top:-6px;border-width:6px;box-shadow:0 0 0 5px var(--line2-soft)}
 #route li.now span{color:var(--text);font-weight:700;font-size:13.5px}
+/* 시나리오: 띠 대신 메뉴(버튼 → 펼침 목록) */
+#scnBtn{order:1;font:inherit;font-size:13px;display:flex;align-items:center;gap:8px;border:1px solid var(--line2);background:var(--line2-soft);color:var(--text);border-radius:9px;padding:6px 12px;cursor:pointer}
+#scnBtn b{font-weight:700}#scnBtn i{font-style:normal;color:var(--muted);font-size:11px}
+#top #route{position:absolute;top:calc(100% + 8px);left:0;width:min(340px,calc(100vw - 32px));display:none;flex:none;overflow:visible;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:6px;backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);z-index:40;box-shadow:0 14px 40px rgba(0,0,0,.4)}
+#top #route.open{display:block}
+#top #route ol{flex-direction:column;min-width:0;padding:0;gap:2px}#top #route ol::before{display:none}
+#top #route li{flex-direction:row;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;cursor:pointer}
+#top #route li:hover{background:rgba(255,255,255,.06)}
+#top #route li button,#top #route li.now button{width:12px;height:12px;margin:0;border-width:3px;box-shadow:none;flex:none}
+#top #route li.now{background:var(--line2-soft)}
+#top #route li span{font-size:13.5px;color:var(--text);white-space:normal}#top #route li small{display:block;color:var(--muted);font-size:11.5px;margin-top:1px}
+#top{position:fixed}
 #env{flex:none;display:flex;align-items:center;gap:10px}#nowWx{font-size:12.5px;color:var(--muted);white-space:nowrap}#nowWx:empty{display:none}#nowBtn{font:inherit;font-size:12.5px;border:1px solid var(--line2);background:var(--line2-soft);color:var(--text);border-radius:8px;padding:5px 10px;cursor:pointer}
 #wx{position:static!important;transform:none!important;left:auto!important;top:auto!important;display:flex;gap:10px;align-items:center;padding:0;background:none;border:0;backdrop-filter:none}
 #wx span,#wx i{display:none}
@@ -145,7 +157,7 @@ input[type=range]{accent-color:var(--line2)}
 </div>
 <div id="weap" class="hud" style="display:none"></div>
 <div id="ctrl" class="hud" style="display:none"></div>
-<header id="top" class="hud"><div id="brand"><b>성수 디지털트윈</b><span>연무장길 일대, 공공데이터 기반</span></div><div id="views"></div><nav id="route" aria-label="시뮬레이션 고르기"><ol id="routeList"></ol></nav><div id="env"><button id="nowBtn" title="지금 성수동 날씨·시간·계절로 맞춤">지금 날씨</button><span id="nowWx"></span></div></header>
+<header id="top" class="hud"><div id="brand"><b>성수 디지털트윈</b><span>연무장길 일대, 공공데이터 기반</span></div><div id="views"></div><button id="scnBtn" aria-haspopup="true" aria-expanded="false"><i>시뮬레이션</i><b id="scnNow">둘러보기</b><i>▾</i></button><nav id="route" aria-label="시뮬레이션 고르기"><ol id="routeList"></ol></nav><div id="env"><button id="nowBtn" title="지금 성수동 날씨·시간·계절로 맞춤">지금 날씨</button><span id="nowWx"></span></div></header>
 <aside id="out" class="hud" aria-label="결과"><div id="kpis"></div><div id="rows"></div><div id="outCharts"></div><div id="tools"></div></aside>
 <footer id="time" class="hud"><button id="play" aria-label="일시정지">❚❚</button><div id="clock">0:00</div><div id="spd" role="group" aria-label="빠르기"><button data-k="1" class="on">1배</button><button data-k="2">2배</button><button data-k="4">4배</button></div><button id="outBtn" class="ico">결과</button></footer>
 <div id="panoBox" class="hud" style="display:none"></div>
@@ -220,9 +232,9 @@ function treeColors() { if (window.__treesGLB) return; const ic = window.__trees
   if (ic.instanceColor) ic.instanceColor.needsUpdate = true; }
 function applyEnv() { snowify(scene); const se = SEASON[ENV.season], w = ENV.weather;
   const sp = sunPos(new Date(2026, se.date[0], se.date[1]), 14); SUN_DIR = new THREE.Vector3(Math.sin(sp.az) * Math.cos(sp.alt), Math.max(0.08, Math.sin(sp.alt)), -Math.cos(sp.az) * Math.cos(sp.alt));
-  if (window.__sky && window.__sky.material.uniforms.uCloud) window.__sky.material.uniforms.uCloud.value = w === "clear" ? (ENV.overcast ? 0.9 : ENV.season === "autumn" ? 0.28 : 0.42) : 1.0;   // 구름 양: 맑음 조금, 흐림·비·눈 가득
-  const oc = w === "clear" && ENV.overcast, sky = w === "rain" ? 0x8e979f : w === "snow" ? 0xc3cad1 : oc ? 0xb4bac0 : se.sky;   // oc: 흐림(지금 날씨에서만)
-  setMood(sky, w === "clear" ? (oc ? 520 : 650) : w === "rain" ? 380 : 320, w === "clear" ? (oc ? 0.34 : se.hemi) : 0.42, w === "clear" ? (oc ? 1.3 : se.sun) : w === "rain" ? 0.7 : 1.0);
+  const X = WXP[wxKey()], sky = X.fog;
+  if (window.__sky && window.__sky.material.uniforms.uCloud) window.__sky.material.uniforms.uCloud.value = X.cloud * (wxKey() === "clear" && ENV.season === "autumn" ? 0.7 : 1);   // 구름 양: 맑음 조금(가을 더 적게), 흐림·비·눈 가득
+  setMood(sky, X.far, X.hemi, X.sun * (wxKey() === "clear" ? se.sun / 3.3 : 1)); scene.fog.near = FOGB.near = X.near;
   timeEnv();
   if (window.__sky && window.__sky.material.uniforms) { const u = window.__sky.material.uniforms; for (const k of Object.keys(u)) if (u[k].value && u[k].value.isColor) u[k].value.lerp(new THREE.Color(sky), 0.0); }
   SNOW_U.value = ENV.season === "winter" ? Math.max(ENV.snow, 0.75) : ENV.snow; treeColors(); if (window.__treesGLB) seasonTrees();
@@ -265,6 +277,12 @@ function updateWeather(dt) { const w = ENV.weather, c = camera.position, R = WX;
 // ══ 낮·저녁·밤: 해 높이·하늘·빛 + 밤 불빛(창·진열창·간판·가로등) ══
 const NIGHT_U = { value: 0 };   // 0 낮 ~ 1 밤
 const SKY_DEF = { top: new THREE.Color(0x6f9ccc), bot: new THREE.Color(0xd5dde4) };
+const WXP = {   // 날씨별 낮 하늘(위·지평선)·안개색·보이는 거리·구름 양·햇빛·하늘빛
+  clear: { top: 0x2f6fc4, bot: 0xb9d4ee, fog: 0xc3d7ea, far: 1700, near: 260, cloud: 0.22, sun: 3.7, hemi: 0.16, exp: 0.9 },
+  overcast: { top: 0x8794a1, bot: 0xbcc3ca, fog: 0xb6bdc4, far: 750, near: 140, cloud: 0.95, sun: 1.2, hemi: 0.36, exp: 0.88 },
+  rain: { top: 0x4f5862, bot: 0x7a838c, fog: 0x7c858e, far: 360, near: 60, cloud: 1.0, sun: 0.45, hemi: 0.46, exp: 0.82 },
+  snow: { top: 0x96a0aa, bot: 0xd0d6dc, fog: 0xcfd4d9, far: 300, near: 50, cloud: 1.0, sun: 0.9, hemi: 0.5, exp: 0.9 } };
+const wxKey = () => ENV.weather === "clear" ? (ENV.overcast ? "overcast" : "clear") : ENV.weather;
 function glowFor(m) {   // 창유리: 2.6×3m 칸마다 무작위로 불 켜짐, 진열창: 전부 켜짐
   const n = (m.name || "").replace(/\.\d+$/, ""), shop = n === "진열창"; if (n !== "창유리" && !shop) return;
   const prev = m.onBeforeCompile, key = m.customProgramCacheKey;
@@ -291,7 +309,7 @@ function timeEnv() {   // applyEnv 안에서 부름: 해·하늘·빛을 시간�
     night = 0.45; sunCol = 0xff9a55; if (u) { u.top.value.set(0x3f4c78); u.bot.value.set(0xf0a37a); } setMood(0xe8a789, 520, 0.2, 1.9); renderer.toneMappingExposure = 0.95; }
   else if (t === "night") { SUN_DIR = new THREE.Vector3(-0.35, 0.75, 0.55).normalize();   // 달빛 방향(고정)
     night = 1; sunCol = 0x9fb4ff; if (u) { u.top.value.set(0x04070e); u.bot.value.set(0x18213a); } setMood(0x141c30, 420, 0.13, 0.22); renderer.toneMappingExposure = 1.05; }   /* 도시 밤하늘 빛: 길과 사람이 어렴풋이 보이게 */
-  else { if (u) { u.top.value.copy(SKY_DEF.top); u.bot.value.copy(SKY_DEF.bot); } renderer.toneMappingExposure = 0.85; }
+  else { const X = WXP[wxKey()]; if (u) { u.top.value.set(X.top); u.bot.value.set(X.bot); } renderer.toneMappingExposure = X.exp; }
   if (t !== "day" && ENV.weather !== "clear" && u) { u.top.value.multiplyScalar(0.6); u.bot.value.multiplyScalar(0.7); if (scene.background.isColor) scene.background.multiplyScalar(0.7); scene.fog.color.multiplyScalar(0.7); }
   sun.color.setHex(sunCol); NIGHT_U.value = night; envDim(t === "night" ? 0.05 : t === "dusk" ? 0.3 : 0.55);
   if (window.__signMat) window.__signMat.emissiveIntensity = 0.12 + 1.2 * night;
@@ -355,8 +373,12 @@ function triFor(m) { const n = (m.name || "").replace(/\.\d+$/, "");
     vec3 near = tc * mix(vec3(1.0), diffuseColor.rgb / max(lum, 0.03), 0.18) * (0.75 + 0.5 * lum);
     diffuseColor.rgb = mix(near, diffuseColor.rgb, smoothstep(45.0, 240.0, dd)); }`); };
   const m = new THREE.Mesh(g, gm); m.receiveShadow = true; scene.add(m);
+  if (city.ground2) { const c2 = city.ground2.corners, g2 = new THREE.BufferGeometry(), P2 = [c2.sw, c2.se, c2.ne, c2.nw].map(p => V(p[0], p[1], -0.15));   // 넓은 바닥 사진(1m): 한강 둔치·강변북로·다리·건너편. 가운데 0.5m 사진 아래에 깖
+    g2.setAttribute("position", new THREE.Float32BufferAttribute(P2.flatMap(v => [v.x, v.y, v.z]), 3)); g2.setAttribute("uv", new THREE.Float32BufferAttribute([0, 0, 1, 0, 1, 1, 0, 1], 2)); g2.setIndex([0, 1, 2, 0, 2, 3]); g2.computeVertexNormals();
+    new THREE.TextureLoader().load("data/" + city.ground2.img, t2 => { t2.colorSpace = THREE.SRGBColorSpace; t2.anisotropy = 8;
+      const m2 = new THREE.Mesh(g2, new THREE.MeshStandardMaterial({ map: t2, roughness: 1 })); m2.receiveShadow = true; scene.add(m2); window.__ground2 = m2; }); }
   const fT = T_CONC.clone(); fT.repeat.set(1600, 1600); fT.needsUpdate = true; const far = new THREE.Mesh(new THREE.PlaneGeometry(6000, 6000), new THREE.MeshStandardMaterial({ map: fT, color: 0x8d8d86, roughness: 0.95 })); far.receiveShadow = true;   // 사진 밖: 콘크리트
-  far.rotation.x = -Math.PI / 2; far.position.y = -0.05; scene.add(far); }
+  far.rotation.x = -Math.PI / 2; far.position.y = -0.45; scene.add(far); }
 const TXL = new THREE.TextureLoader(), ASPH = TXL.load("textures/asphalt.jpg"), ASPH_N = TXL.load("textures/asphalt_n.jpg");   // ambientCG Road012A (CC0)
 for (const t of [ASPH, ASPH_N]) { t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 8; } ASPH.colorSpace = THREE.SRGBColorSpace;
 function trisMesh(arr, color, y) {
@@ -1033,7 +1055,7 @@ const keys = {}, pressed = {};
 addEventListener("keydown", e => { if (e.code === "Space") e.preventDefault(); if (!keys[e.code]) pressed[e.code] = true; keys[e.code] = true; if (e.code === "KeyM") showMenu(); if (e.code === "KeyN") sndToggle(); if (e.code === "KeyV") air = !air; if (e.code === "KeyG") toggleFly(); });
 let fly = false; const FLY = { x: 0, y: 0, z: 0 };
 function toggleFly() { fly = !fly; if (fly) { FLY.fog = scene.fog.far; FLY.x = camera.position.x; FLY.y = -camera.position.z; FLY.z = Math.max(3, camera.position.y); const d = new THREE.Vector3(); camera.getWorldDirection(d); yaw = Math.atan2(-d.x, -d.z); pitch = Math.asin(Math.max(-1, Math.min(1, d.y))); }
-  else { scene.fog.far = FLY.fog || 650; if (!(S && S.pano)) pitch = 0.32; } $("flyBtn").classList.toggle("on", fly); msg(fly ? "자유 비행 · WASD 이동, Space 위, C 아래, Shift 빠르게, 마우스 끌어 방향, G 끝" : "자유 비행 끝", 2); }
+  else { scene.fog.far = FLY.fog || FOGB.far; if (!(S && S.pano)) pitch = 0.32; } $("flyBtn").classList.toggle("on", fly); msg(fly ? "자유 비행 · WASD 이동, Space 위, C 아래, Shift 빠르게, 마우스 끌어 방향, G 끝" : "자유 비행 끝", 2); }
 addEventListener("keyup", e => keys[e.code] = false);
 let yaw = 0, pitch = 0.32, dist = 7, drag = false, air = false, airPt = 1.05, dragBtn = 0;
 canvas.addEventListener("pointerdown", e => { drag = true; dragBtn = e.button; canvas.setPointerCapture(e.pointerId); }); canvas.addEventListener("contextmenu", e => e.preventDefault());
@@ -1351,7 +1373,7 @@ const BINFO = window.BINFO = (() => {
 #binfo header small{color:var(--muted);font-size:12px}#binfo h3{margin:2px 0 2px;font-size:18px;font-weight:800;letter-spacing:-.01em;padding-right:34px}
 #binfo .x{position:absolute;right:10px;top:10px;width:30px;height:30px;border-radius:8px;border:1px solid var(--line);background:transparent;color:var(--muted);font:inherit;font-size:16px;cursor:pointer}
 #binfo .x:hover{color:var(--text)}#binfo nav{display:flex;gap:2px;padding:6px 10px 0;border-bottom:1px solid var(--line)}
-#binfo nav button{font:inherit;font-size:13px;background:none;border:0;border-bottom:2px solid transparent;color:var(--muted);padding:7px 10px;cursor:pointer}
+#binfo nav{overflow-x:auto;scrollbar-width:none}#binfo nav button{white-space:nowrap;font:inherit;font-size:13px;background:none;border:0;border-bottom:2px solid transparent;color:var(--muted);padding:7px 10px;cursor:pointer}
 #binfo nav button.on{color:var(--text);border-bottom-color:var(--line2)}
 #binfo .bd{flex:1;overflow:auto;padding:14px 16px;display:grid;gap:12px;align-content:start}
 #binfo dl{display:grid;grid-template-columns:7.2em 1fr;gap:5px 12px;margin:0}#binfo dt{color:var(--muted)}#binfo dd{margin:0;font-variant-numeric:tabular-nums}
@@ -1365,7 +1387,7 @@ const BINFO = window.BINFO = (() => {
 #binfo svg text{font-family:inherit}
 @media (max-width:640px){#binfo{top:auto;bottom:76px;height:58vh}}`; document.head.appendChild(st);
   const el = document.createElement("div"); el.id = "binfo"; el.className = "hud"; el.setAttribute("role", "dialog"); el.setAttribute("aria-label", "건물 정보"); document.body.appendChild(el);
-  let INFO = null, SRC = "", FL_SRC = "", cur = null, tab = "o", floorSel = null; const hl = new THREE.Group(); hl.renderOrder = 20; scene.add(hl);
+  let INFO = null, SRC = "", FL_SRC = "", STO = null, STO_SRC = "", bChart = null, cur = null, tab = "o", floorSel = null; const hl = new THREE.Group(); hl.renderOrder = 20; scene.add(hl);
   const esc = t => String(t).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
   const fmtN = (v, u, d = 1) => v == null ? '<span class="none">대장에 값 없음</span>' : Number(v).toLocaleString("ko-KR", { maximumFractionDigits: d }) + (u ? " " + u : "");
   const shapeOf = b => { const sh = new THREE.Shape(); for (let i = 0; i < b.p.length; i += 2) (i ? sh.lineTo : sh.moveTo).call(sh, b.p[i], b.p[i + 1]); return sh; };
@@ -1472,6 +1494,7 @@ const BINFO = window.BINFO = (() => {
     msg(`${k > 0 ? k + "층" : "지하 " + -k + "층"} 실내 · 왼쪽 끌기로 돌리기 · 휠 확대·축소`, 3); return true; }
   function intExit() { if (!INT.on) return; intClear(); intSurface(false); for (const [o, m] of INT.mats || []) { for (const c2 of [].concat(o.material)) c2.dispose(); o.material = m; } INT.mats = null;
     Object.assign(window, { __intOn: false, __intZ: null }); air = INT.save.air; dist = INT.save.dist; airPt = INT.save.airPt; yaw = INT.save.yaw; player.x = INT.save.x; player.y = INT.save.y; INT.on = false; INT.dSet = false; hl.visible = true; camera.clearViewOffset(); const out = document.getElementById("out"); if (out) out.style.visibility = ""; }
+  const BCOL = ["#00a84d", "#3fa9f5", "#f2c21a", "#e5484d", "#a970ff", "#ff8a3d", "#2ec4b6", "#9aa1a8", "#d16ba5", "#6c8cff"];
   function near(b, list, k) { return list.map(o => ({ ...o, d: Math.hypot(o.x - b.cx, o.y - b.cy) })).sort((a, c) => a.d - c.d).slice(0, k); }
   function render() { const b = cur, d = info(b); if (!b) return;
     const name = (d && d.nm ? d.nm + (d.dong ? " " + d.dong : "") : b.n) || (d && d.use ? d.use : "이름 없는 건물"), { fu, fb, fh } = floorsOf(b, d);
@@ -1485,11 +1508,22 @@ const BINFO = window.BINFO = (() => {
     if (tab === "f") { const FL = d && d.fl, byK = new Map(); if (FL) for (const [k, u, a] of FL) { const e = byK.get(k) || byK.set(k, { u: [], a: 0 }).get(k); if (u && !e.u.includes(u)) e.u.push(u); e.a += a; }
       const ks = []; for (let k = fu; k >= -fb; k--) if (k) ks.push(k); for (const k of byK.keys()) if (!ks.includes(k)) ks.push(k); ks.sort((a, c) => c - a);
       const lab = k => k >= 100 ? "옥탑" + (k - 100 > 1 ? k - 100 : "") : k > 0 ? k + "F" : "B" + -k; let h = "";
-      for (const k of ks) { const e = byK.get(k); h += `<button class="fl${k < 0 ? " b" : ""}${floorSel === k ? " on" : ""}" data-k="${k}"><b>${lab(k)}</b><span>${e ? esc(e.u.join(", ")) || "용도 미기재" : FL ? "층별개요에 없음" : k > 0 ? "지상" : "지하"}</span><span>${e && e.a ? Math.round(e.a).toLocaleString("ko-KR") + "㎡" : ""}</span></button>`; }
+      const SB = (STO && STO[b.ix]) || [], onF = k => SB.filter(x => x[4] === (k > 0 ? String(k) : "B" + -k) || (k < 0 && x[4] === String(k))).map(x => x[0]);
+      for (const k of ks) { const e = byK.get(k), sf = onF(k); h += `<button class="fl${k < 0 ? " b" : ""}${floorSel === k ? " on" : ""}" data-k="${k}"><b>${lab(k)}</b><span>${e ? esc(e.u.join(", ")) || "용도 미기재" : FL ? "층별개요에 없음" : k > 0 ? "지상" : "지하"}${sf.length ? `<br><em style="font-style:normal;color:var(--line2)">${esc(sf.slice(0, 4).join(" · "))}${sf.length > 4 ? ` 외 ${sf.length - 4}곳` : ""}</em>` : ""}</span><span>${e && e.a ? Math.round(e.a).toLocaleString("ko-KR") + "㎡" : ""}</span></button>`; }
       const tot = FL ? FL.reduce((a, t) => a + t[2], 0) : 0;
       const hasInt = d && d.pnu === KOLON1.pnu;
       body = (hasInt ? `<div style="border:1px solid var(--line2);background:var(--line2-soft);border-radius:8px;padding:9px 11px;font-size:12.5px;line-height:1.5">지하 2층~지상 20층은 실내를 3D 로 볼 수 있습니다(지하 3층은 평면도가 없어 제외). 층을 누르면 그 층 위를 잘라 호실·복도·코어가 보이고, 왼쪽 끌기로 돌려 볼 수 있습니다.${INT.on ? ` <button class="btn ghost" data-act="intx" style="margin-left:6px;padding:4px 10px">실내 보기 끝</button>` : ""}<br><span style="color:var(--faint)">실내 배치: 분양 안내 평면도(네이버 블로그 nambu114, 2011)를 보고 새로 그린 것. 치수는 그림 비율을 건물 크기에 맞춘 근사값입니다. 지하층은 대지 전체에 걸쳐 있어 면적(층별개요)으로 축척을 맞췄습니다.</span></div>` : "") + `<p style="color:var(--muted);margin:0">층을 누르면 3D 건물에서 그 층이 초록으로 표시됩니다.${FL ? ` 층별 면적 합계 ${Math.round(tot).toLocaleString("ko-KR")}㎡${d.ga ? ` (대장 연면적 ${Math.round(d.ga).toLocaleString("ko-KR")}㎡)` : ""}.` : ""}</p><div class="stack">${h}</div>
         <p class="src">${FL ? `출처: ${esc(FL_SRC)}. 층 높이는 대장 높이 ÷ 지상층수로 고르게 나눈 값입니다.` : d ? "이 건물은 층별개요가 없거나, 한 필지에 대장 건물이 여러 동이라 어느 동인지 가려내지 못해 층별 용도를 붙이지 않았습니다." : "대장과 짝지어지지 않은 건물입니다."}</p>`; }
+    if (tab === "b") { const SB = (STO && STO[b.ix]) || [];
+      if (!SB.length) body = `<p style="color:var(--muted);margin:0">이 건물에는 상가업소 자료에 올라 있는 업체가 없습니다(주거·공장·창고이거나 사업자 등록이 다른 주소인 경우).</p><p class="src">출처: ${esc(STO_SRC)}</p>`;
+      else { const cat = {}; for (const x of SB) cat[x[1]] = (cat[x[1]] || 0) + 1; const fl = {}; for (const x of SB) (fl[x[4] || "?"] = fl[x[4] || "?"] || []).push(x);
+        const order = Object.keys(fl).sort((a, c) => (a === "?") - (c === "?") || (parseInt(c.replace("B", "-")) || 0) - (parseInt(a.replace("B", "-")) || 0));
+        body = `<div style="display:grid;grid-template-columns:130px 1fr;gap:12px;align-items:center"><canvas id="bCat" width="130" height="130" aria-label="업종 구성"></canvas><div style="font-size:12.5px;line-height:1.7">${Object.entries(cat).sort((a, c) => c[1] - a[1]).map(([k, n], i) => `<span style="display:inline-block;width:9px;height:9px;border-radius:2px;background:${BCOL[i % BCOL.length]};margin-right:6px"></span>${esc(k)} <b>${n}</b>`).join("<br>")}</div></div>
+          <p style="margin:0;color:var(--muted)">업체 ${SB.length}곳 · 층·호는 자료에 적힌 대로(빈 칸은 미기재)</p>
+          ${order.map(f => `<div><div style="font-size:12px;color:var(--faint);margin:2px 0 4px">${f === "?" ? "층 미기재" : (f.startsWith("B") || f.startsWith("-") ? "지하 " + f.replace(/[B-]/, "") : f) + "층"}</div>${fl[f].map(x => `<div style="display:flex;justify-content:space-between;gap:8px;padding:5px 0;border-bottom:1px solid var(--line)"><span><b style="font-weight:600">${esc(x[0])}</b><br><span style="color:var(--muted);font-size:12px">${esc(x[2])}</span></span><span style="color:var(--muted);font-size:12px;white-space:nowrap">${[x[3] && x[3] + "동", x[5] && x[5] + "호"].filter(Boolean).join(" ") || ""}</span></div>`).join("")}</div>`).join("")}
+          <p class="src">출처: ${esc(STO_SRC)}. 지번(필지) 번호로 건물에 붙였고, 한 필지에 건물이 여럿이면 업소 좌표로 골랐습니다.</p>`;
+        setTimeout(() => { const cv = document.getElementById("bCat"); if (!cv || !window.Chart) return; if (bChart) bChart.destroy(); const E = Object.entries(cat).sort((a, c) => c[1] - a[1]);
+          bChart = new Chart(cv, { type: "doughnut", data: { labels: E.map(e => e[0]), datasets: [{ data: E.map(e => e[1]), backgroundColor: E.map((e, i) => BCOL[i % BCOL.length]), borderWidth: 0, hoverOffset: 6 }] }, options: { cutout: "62%", animation: { animateRotate: true, duration: 700 }, plugins: { legend: { display: false } }, responsive: false } }); }, 0); } }
     if (tab === "p") body = `<img class="shot" alt="트윈에서 찍은 이 건물" src="${shot(b)}"><p class="src">디지털트윈 화면에서 지금 시각·날씨로 찍은 그림입니다. 실제 사진은 직접 촬영(지상·드론)분이나 이용 제한 없는 공공 사진이 생기는 대로 넣습니다. 간판·상호는 실제 모습 그대로 둡니다.</p>
         ${d ? `<div class="row"><a class="btn ghost" href="https://map.naver.com/p/search/${encodeURIComponent((d.addr || "").replace(/^서울특별시 /, "서울 "))}" target="_blank" rel="noopener">네이버 지도 거리뷰로 보기</a></div>` : ""}`;
     if (tab === "l") body = (d && PLAN_LINKS[d.pnu] ? `<div class="row">${PLAN_LINKS[d.pnu].map(([t, u]) => `<a class="btn" href="${u}" target="_blank" rel="noopener">${esc(t)}</a>`).join("")}</div>` : "") + plan(b, d) + `<p class="src">건물통합정보 도형의 바닥 윤곽입니다(층마다 같다고 가정). 실내 구획이 있는 실제 평면도는 소유·관리 측 자료를 받아 허락 범위 안에서 넣습니다. 블로그·포털의 평면도 사진은 올린 사람에게 저작권이 있어 그대로 옮기지 않습니다.</p>`;
@@ -1499,7 +1533,7 @@ const BINFO = window.BINFO = (() => {
         <div class="row"><button class="btn" data-act="fire">이 건물에서 화재 시작</button></div>
         <p class="src">거리는 건물 중심에서 잰 직선거리입니다. 119·경찰 위치는 지도에 이미 넣은 소방서·안전센터(서울 열린데이터광장)·지구대(OSM), 대피장소는 성동구 지진옥외대피장소(공공데이터포털, 주소를 OSM 으로 좌표 변환)입니다.</p>`; }
     el.innerHTML = `<header><small>${esc(d && d.use || "건물")}${d && d.ap ? " · " + esc(d.ap.slice(0, 4)) + "년 사용승인" : ""}</small><h3>${esc(name)}</h3><small>${esc(d && d.addr || "")}${b.n && d && d.nm && b.n.replace(/\s/g, "") !== d.nm.replace(/\s/g, "") ? " · 지도 이름 " + esc(b.n) : ""}</small><button class="x" aria-label="닫기">×</button></header>
-      <nav>${[["o", "개요"], ["f", "층별"], ["p", "사진"], ["l", "평면"], ["s", "안전"]].map(([k, t]) => `<button data-t="${k}" class="${tab === k ? "on" : ""}">${t}</button>`).join("")}</nav><div class="bd">${body}</div>`; }
+      <nav>${[["o", "개요"], ["f", "층별"], ["b", "업체" + (STO && STO[b.ix] ? " " + STO[b.ix].length : "")], ["p", "사진"], ["l", "평면"], ["s", "안전"]].map(([k, t]) => `<button data-t="${k}" class="${tab === k ? "on" : ""}">${t}</button>`).join("")}</nav><div class="bd">${body}</div>`; }
   el.addEventListener("click", e => { const t = e.target.closest("button"); if (!t) return;
     if (t.classList.contains("x")) return close();
     if (t.dataset.t) { tab = t.dataset.t; render(); return; }
@@ -1509,6 +1543,7 @@ const BINFO = window.BINFO = (() => {
     if (t.dataset.act === "fire") { const b = cur, s2 = SCN.find(q => q.id === "fire"); close(); start(s2); setTimeout(() => SC.fire.onPick(b), 50); } });
   addEventListener("keydown", e => { if (e.key === "Escape" && cur) close(); });
   async function open(b) { if (!INFO) { try { const j = await (await fetch("data/bldg_info.json")).json(); INFO = j.b; SRC = j.src; FL_SRC = j.src_fl || ""; } catch (e) { INFO = []; SRC = "불러오기 실패"; } }
+    if (!STO) { try { const j = await (await fetch("data/stores.json")).json(); STO = j.b; STO_SRC = j.src; } catch (e) { STO = {}; } }
     cur = b; floorSel = null; const tb = document.getElementById("top"); if (tb && innerWidth > 640) el.style.top = Math.round(tb.getBoundingClientRect().bottom + 12) + "px"; el.classList.add("on"); outline(b); render(); }
   function close() { intExit(); cur = null; el.classList.remove("on"); clearHL(); }
   return { open, close, get cur() { return cur; } }; })();
@@ -1564,6 +1599,7 @@ class Puffs {
   clear() { this.life.fill(0); this.alpha.fill(0); for (let k = 0; k < this.n; k++) this.pos[k * 3 + 1] = -999; this.update(0); }
 }
 const SMOKE2 = new Puffs(3000, 0x77706a, false), FLAME = new Puffs(1500, 0xff8a2a, true), DUST2 = new Puffs(1200, 0xa89b88, false);
+const WATERJ = new Puffs(1500, 0xd6ecff, false);   // 소방 방수 물줄기
 const DIRS = [["북", 0], ["북동", 45], ["동", 90], ["남동", 135], ["남", 180], ["남서", 225], ["서", 270], ["북서", 315]];
 const KIND_KO = { brick: "벽돌·조적", concrete: "철근콘크리트", plaster: "주택(미장)", apt: "아파트", glass: "철골·유리", metal: "철골·공장", unknown: "미상" };
 const yr = b => b.y || 0, yrTxt = b => b.y ? b.y + "년" : "연도 미상";
@@ -1580,7 +1616,9 @@ SC.fire = { hp: false, air: true, bigShadow: false, tools: "건물을 눌러 발
       <div class="cr"><button id="c_pause" class="btn2">일시정지</button><button id="c_reset" class="btn2">다시</button></div>
       <div class="note"><b>공장 위치</b> · 「서울특별시 성동구 공장현황」(2026-07-24, 918곳) 중 주소로 위치가 확인된 곳만 건물에 표시(미니맵 갈색 점). 주소 481곳 중 123곳만 찾아 일부입니다. 공장이라고 불이 더 잘 번지게 하지는 않았습니다(근거 자료 없음).</div>
       <div class="note"><b>실제 통계</b> · 서울 2019~2023년 2월 화재 중 부주의 58.6%, 7~8월 화재의 26.1%가 전기적 요인(서울시 소방재난본부). 원인·장소별 원자료: 소방청 연간화재통계(공공데이터포털) · 서울시 원인별 화재발생(서울 열린데이터광장).</div>
-      <div class="note">건물을 누르면 그 건물에서 불이 시작됩니다. 옮겨붙는 확률·타는 시간은 건물 구조와 간격·바람으로 정한 <b>가정</b>입니다(실측·공식 모형 아님).</div>`);
+      <div class="note">건물을 누르면 그 건물에서 불이 시작됩니다. 옮겨붙는 확률·타는 시간은 건물 구조와 간격·바람으로 정한 <b>가정</b>입니다(실측·공식 모형 아님).</div>
+      <div class="note"><b>출동 편성</b> · 소방청 「재난현장 표준작전절차」(SOP 202 화재, 지휘통제절차): 선착대 = 선착·2착 안전센터 + 1착 구조대 + 지휘팀, 그 밖의 출동대는 현장에서 떨어진 대기1단계 장소에서 대기. 선착 물탱크차는 도착 즉시 펌프차에 급수. 출발지는 길로 가장 가까운 실제 소방서·119안전센터(서울 열린데이터광장)·지구대(OSM). 접수 1분·준비 1분·평균 30km/h·방수로 불이 줄어드는 정도는 <b>가정</b>.</div>
+      <div id="emList" class="note"></div>`);
     $("c_wd").onchange = e => this.wdir = +e.target.value; $("c_ws").oninput = e => { this.ws = +e.target.value; $("c_wsv").textContent = this.ws + " m/s"; };
     $("c_sp").onchange = e => this.speed = +e.target.value; $("c_pause").onclick = () => { this.paused = !this.paused; $("c_pause").textContent = this.paused ? "계속" : "일시정지"; };
     $("c_reset").onclick = () => this.reset(this.first);
@@ -1589,7 +1627,39 @@ SC.fire = { hp: false, air: true, bigShadow: false, tools: "건물을 눌러 발
     this.reset(c); },
   reset(b0) { for (const b of [...this.burn.keys(), ...this.done]) { paint(b, null); if (b.useBox) { b.useBox = false; b.hs = 1; b.tint = null; showB(b, true); } }
     this.burn.clear(); this.done.clear(); this.min = 0; this.acc = 0; this.lastM = -1; if (this.ch) this.ch.reset(); cityDirty = true; SMOKE2.clear(); FLAME.clear(); this.first = b0; this.ignite(b0);
-    player.x = b0.cx; player.y = b0.cy; collide(player, 0.45); msg(`발화: ${KIND_KO[b0.k] || ""} ${b0.f}층 · ${yrTxt(b0)}` + (b0.fac ? ` · 등록 공장 ${b0.fac.n}곳(${b0.fac.kind})` : ""), 3.5); },
+    player.x = b0.cx; player.y = b0.cy; collide(player, 0.45); msg(`발화: ${KIND_KO[b0.k] || ""} ${b0.f}층 · ${yrTxt(b0)}` + (b0.fac ? ` · 등록 공장 ${b0.fac.n}곳(${b0.fac.kind})` : ""), 3.5); this.dispatch(b0); },
+  dispatch(b0) {   // 재난현장 표준작전절차 SOP 202·지휘통제절차: 선착대 = 선착·2착 안전센터 + 1착 구조대 + 지휘팀, 나머지(후착대)는 대기1단계 장소에서 대기
+    for (const u of this.em || []) { scene.remove(u.g); u.g.traverse(o => { if (o.material && o.material.dispose && o.isMesh && VEH_ALIAS) {} }); } this.em = []; this.truck = null;
+    const C = SC.crash, tgtN = C.roadNode(b0.cx, b0.cy); if (tgtN < 0) return; const T0 = NODES[tgtN], D = dijkstraCar([tgtN], 2.5);
+    const road = (bs) => { let best = null; for (let i = 0; i < NODES.length; i++) { if (!isFinite(D[i]) || NODES[i].w < 2.5) continue; const out = Math.hypot(bs.x - NODES[i].x, bs.y - NODES[i].y) * EM_ROAD, tot = out + D[i]; if (!best || tot < best.tot) best = { bs, e: i, out, tot }; } return best; };
+    const fires = EM_BASES.filter(b => b.kind === "fire"), centers = fires.filter(b => /안전센터/.test(b.name)).map(road).filter(Boolean).sort((a, c) => a.tot - c.tot), hq = fires.filter(b => /소방서/.test(b.name)).map(road).filter(Boolean).sort((a, c) => a.tot - c.tot)[0];
+    const pol = EM_BASES.filter(b => b.kind === "police").map(road).filter(Boolean).sort((a, c) => a.tot - c.tot)[0];
+    const U = []; const add = (p, type, label, cols, stopAt, extraT = 0) => { if (p) U.push({ p, type, label, cols, stopAt, extraT }); };
+    const R2 = [0xff2a2a, 0xff2a2a], RB = [0xff2a2a, 0x2a6bff];
+    add(centers[0], "fire", "선착 펌프차", R2, 14); add(centers[0], "tank", "선착 물탱크차", R2, 24, 8); add(centers[0], "ambulance", "구급차", RB, 54, 4);
+    add(centers[1], "fire", "2착 펌프차", R2, 34); add(centers[1], "tank", "2착 물탱크차", R2, 44, 8);
+    add(hq, "rescue", "구조공작차(1착 구조대)", R2, 64); add(hq, "command", "지휘차(지휘팀)", R2, 74, -6);
+    add(pol, "police", "순찰차(교통·접근 통제)", RB, 95);
+    add(centers[2], "fire", "후착 펌프차(대기1단계)", R2, 150);
+    for (const u of U) { const p = u.p, path = [p.e]; while (D[path[path.length - 1]] > 0.5 && path.length < 3000) { const i = path[path.length - 1]; let nx = -1, nd = D[i]; for (const k of NADJ[i]) if (D[k] < nd && NODES[k].w >= 2.5) { nd = D[k]; nx = k; } if (nx < 0) break; path.push(nx); }
+      const pts = path.map(i => ({ x: NODES[i].x, y: NODES[i].y })), cum = [0]; for (let i = 1; i < pts.length; i++) cum.push(cum[i - 1] + Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y));
+      const g = vehicleGroup(u.type); g.visible = false; scene.add(g); extra.push(g); const lights = sirenLights(g, u.cols, u.type === "police" ? "police" : "fire");
+      const dep = EM_CALL + EM_PREP + u.extraT, arr = dep + p.tot / EM_V;
+      this.em.push({ ...u, base: p.bs.name, g, lights, pts, cum, s: 0, dep, arr, km: p.tot / 1000, done: false }); }
+    this.emT = 0; this.T0 = T0; },
+  emFire(dt) {   // 출동 차: 신고 1분·출동 준비 1분 뒤 길을 따라 옴(화면은 8배속), 도착 순서대로 건물 앞 길에 줄지어 섬
+    if (!this.em || !this.em.length) return; this.emT += dt * EM_X; const ph = Math.floor(performance.now() / 160) % 2, nt = Math.min(1, NIGHT_U.value * 1.8); let lead = null;
+    YIELD.length = 0;
+    for (const u of this.em) { const L = u.cum[u.cum.length - 1], goal = Math.max(0, L - u.stopAt), t = this.emT - u.dep;
+      if (t < 0) { u.g.visible = false; continue; } u.s = Math.min(goal, t * EM_V); u.done = u.s >= goal - 0.01;
+      const p = SC.crash.along(u, u.s, 1.6); u.g.position.set(p.x, 0, -p.y); u.g.rotation.set(0, p.h, 0); u.g.visible = true; if (!u.done) { lead = lead || u; YIELD.push({ x: p.x, y: p.y, r: 24 }); }
+      u.lights.forEach((l, i) => { const on = (i % 2) === ph; l.visible = on; l.userData.halo.visible = on; l.userData.halo.material.opacity = 0.45 + 0.55 * nt; l.userData.halo.scale.setScalar(1.6 + 1.4 * nt); });
+      u.lights.pool.material.color.setHex(u.lights.cols[ph % u.lights.cols.length]); u.lights.pool.material.opacity = 0.18 + 0.5 * nt; }
+    this.truck = lead ? lead.g : null;
+    const el2 = document.getElementById("emList"); if (el2 && (!this.emL || performance.now() - this.emL > 500)) { this.emL = performance.now(); const mm = t => `${Math.floor(t / 60)}분 ${String(Math.round(t % 60)).padStart(2, "0")}초`;
+      el2.innerHTML = "<b>출동 현황</b> (신고 기준 도착 예정)<br>" + this.em.map(u => `${u.done ? "●" : this.emT < u.dep ? "○" : "◐"} ${u.label} · ${u.base} · ${u.km.toFixed(1)}km · ${mm(u.arr)}`).join("<br>"); } },
+  waterOn() {   // 펌프차가 서 있고 같은 안전센터 물탱크차도 도착한 뒤부터 방수(물줄기). 불 세기를 줄이는 정도는 가정
+    return (this.em || []).filter(u => u.type === "fire" && u.done && u.stopAt < 100 && this.em.some(q => q.type === "tank" && q.done && q.base === u.base)); },
   onPick(b) { if (b) this.reset(b); },
   ignite(b) { if (!b || this.burn.has(b) || this.done.has(b)) return; this.burn.set(b, { I: 0.05, t: 0 }); },
   gap(a, b) {   // 두 건물 바닥 윤곽 사이 가장 가까운 거리(m)
@@ -1602,6 +1672,10 @@ SC.fire = { hp: false, air: true, bigShadow: false, tools: "건물을 눌러 발
     for (let i = -2; i <= 2; i++) for (let j = -2; j <= 2; j++) for (const o of BGRID.get(key(Math.floor(b.cx / 20) + i, Math.floor(b.cy / 20) + j)) || []) if (o !== b && !out.find(q => q[0] === o)) { const g = this.gap(b, o); if (g < 18) out.push([o, g]); }
     this.nb.set(b, out); return out; },
   update(dt) {
+    this.emFire(dt); const pumps = this.waterOn();
+    for (const u of pumps) { let tb = null, td = 1e9; for (const b of this.burn.keys()) { const d = Math.hypot(b.cx - u.g.position.x, b.cy + u.g.position.z); if (d < td) { td = d; tb = b; } }
+      if (tb && td < 90) { const P0 = u.g.position, k = 0.06; for (let q = 0; q < 3; q++) { const f = Math.random(); WATERJ.emit(P0.x + (tb.cx - P0.x) * f, 3 + Math.sin(f * Math.PI) * 9 + tb.h * 0.4 * f, P0.z + (-tb.cy - P0.z) * f, 0, -1, 0, 0.6, 1.2, 1.6, 0.6); }
+        if (!this.paused) { const s = this.burn.get(tb); s.I = Math.max(0, s.I - k * dt * this.speed); if (s.I <= 0.02) { this.burn.delete(tb); this.done.add(tb); paint(tb, 0x3d3a37); this.out = (this.out || 0) + 1; } } } }
     const wr = this.wdir * Math.PI / 180, wx = -Math.sin(wr) * this.ws, wy = -Math.cos(wr) * this.ws;   // 바람이 불어 가는 쪽(지역좌표)
     if (!this.paused) { const dm = dt * this.speed; this.min += dm; this.acc += dm;
       for (const [b, s] of this.burn) { const [, full] = FIRE_K[b.k] || FIRE_K.unknown; s.t += dm; s.I = Math.min(1, s.I + dm / full);
@@ -1622,10 +1696,11 @@ SC.fire = { hp: false, air: true, bigShadow: false, tools: "건물을 눌러 발
     for (const w of NPC) { w.mode = nearF && Math.hypot(nearF.cx - w.x, nearF.cy - w.y) < 50 ? "flee" : "walk"; w.from_ = nearF ? { x: nearF.cx, y: nearF.cy } : null; stepWalker(w, dt, w.mode === "flee" ? w.sp * 2 : w.sp); collide(w, 0.35); showActor(w, true, dt, w.mode === "flee" ? 2 : 1); }
     const area = [...this.burn.keys(), ...this.done].reduce((s, b) => s + b.area, 0);
     if (this.ch && Math.floor(this.min) !== this.lastM) { this.lastM = Math.floor(this.min); this.ch.push(this.lastM, [this.burn.size, this.done.size, area / 1000]); }
-    setRows([["경과", `${Math.floor(this.min)}분`], ["타는 중", this.burn.size + "동"], ["다 탄 건물", this.done.size + "동"], ["피해 바닥면적", Math.round(area).toLocaleString() + " m²"], ["불탄·타는 건물의 등록 공장", [...this.burn.keys(), ...this.done].reduce((a, b) => a + (b.fac ? b.fac.n : 0), 0) + "곳"]]);
+    const emA = (this.em || []).filter(u => u.done).length;
+    setRows([["경과", `${Math.floor(this.min)}분`], ["타는 중", this.burn.size + "동"], ["출동 도착", `${emA}/${(this.em || []).length}대`], ["방수 중인 펌프차", pumps.length + "대"], ["다 탄 건물", this.done.size + "동"], ["피해 바닥면적", Math.round(area).toLocaleString() + " m²"], ["불탄·타는 건물의 등록 공장", [...this.burn.keys(), ...this.done].reduce((a, b) => a + (b.fac ? b.fac.n : 0), 0) + "곳"]]);
     $("goal").textContent = `화재 확산 · ${DIRS.find(d => d[1] === this.wdir)[0]}풍 ${this.ws} m/s` + (this.burn.size ? "" : " · 불이 모두 꺼졌습니다");
   },
-  puffs: [SMOKE2, FLAME], marks() { return B.filter(b => b.fac && !this.burn.has(b) && !this.done.has(b)).map(b => [b.cx, b.cy, "#b58a4a", 3]).concat([...this.burn.keys()].map(b => [b.cx, b.cy, "#ff7a1a", 5]), [...this.done].map(b => [b.cx, b.cy, "#3a3532", 4])); } };   // 갈색 점 = 등록 공장이 있는 건물
+  puffs: [SMOKE2, FLAME, WATERJ], marks() { return B.filter(b => b.fac && !this.burn.has(b) && !this.done.has(b)).map(b => [b.cx, b.cy, "#b58a4a", 3]).concat([...this.burn.keys()].map(b => [b.cx, b.cy, "#ff7a1a", 5]), [...this.done].map(b => [b.cx, b.cy, "#3a3532", 4])); } };   // 갈색 점 = 등록 공장이 있는 건물
 
 // ── 2. 지진 ──
 // 내진설계 의무 대상(건축법 시행령 제32조 연혁, 블로그 정리 자료 기준·법령 원문 확인 필요): 1988~ 6층 이상, 2005~ 3층 이상, 2017~ 2층 이상
@@ -2180,9 +2255,10 @@ function dijkstraCar(targets, minW = 4) {   // 차가 다닐 수 있는 길(폭 
   for (const t of targets) { D[t] = 0; push(0, t); }
   while (H.length) { const [d, i] = pop(); if (d > D[i]) continue; for (const k of NADJ[i]) { if (NODES[k].w < minW) continue; const nd = d + Math.hypot(NODES[k].x - NODES[i].x, NODES[k].y - NODES[i].y); if (nd < D[k]) { D[k] = nd; push(nd, k); } } }
   return D; }
+const VEH_ALIAS = { rescue: ["fire", 0xffd2c8, 0.95], tank: ["fire", 0xffe9c0, 1.12], command: ["suv", 0xff4a3a, 1.0] };   // 구조공작차·물탱크차는 소방차 모델, 지휘차는 SUV 모델을 빨갛게(전용 모델 없음)
 function vehicleGroup(type) {   // 불러온 차 모델을 한 대짜리 그룹으로
-  const parts = window.__carModels && (window.__carModels[type] || window.__carModels.sedan); const g = new THREE.Group(); if (!parts) return g;
-  for (const p of parts) { const m = new THREE.Mesh(p.geo, p.mat); m.castShadow = true; m.receiveShadow = true; g.add(m); } return g; }
+  const al = VEH_ALIAS[type], parts = window.__carModels && (window.__carModels[al ? al[0] : type] || window.__carModels.sedan); const g = new THREE.Group(); if (!parts) return g;
+  for (const p of parts) { let mat = p.mat; if (al) { mat = p.mat.clone(); mat.color = new THREE.Color(al[1]); } const m = new THREE.Mesh(p.geo, mat); m.castShadow = true; m.receiveShadow = true; if (al) m.scale.set(1, 1, al[2]); g.add(m); } return g; }
 function roofAt(g, z0, z1) {   // 차 모델에서 앞뒤 z0~z1 구간의 가장 높은 곳(지붕) — 경광등을 실제 지붕 위에 얹으려고
   let top = 0, xs = 0, n = 0; g.traverse(o => { if (!o.isMesh || !o.geometry.attributes.position) return; const P = o.geometry.attributes.position;
     for (let k = 0; k < P.count; k += 3) { const z = P.getZ(k); if (z < z0 || z > z1) continue; const y = P.getY(k); if (y > top) top = y; } }); return top; }
@@ -2509,7 +2585,9 @@ for (const s of SCN) { const b = document.createElement("button"); b.className =
 let PAUSED = false, SPK = 1;
 { const ol = $("routeList");
   for (const s of SCN) { const li = document.createElement("li"); li.dataset.id = s.id; li.innerHTML = `<button aria-label="${s.name}"></button><span>${s.name.replace("·연기 확산", "").replace("·그림자", "").replace(" 확산", "").replace(" 밀집", "").replace("집중호우 ", "")}</span>`;
-    li.onclick = () => start(s); ol.appendChild(li); }
+    li.querySelector("span").insertAdjacentHTML("beforeend", `<small>${s.d}</small>`); li.onclick = () => { $("route").classList.remove("open"); $("scnBtn").setAttribute("aria-expanded", "false"); start(s); }; ol.appendChild(li); }
+  { const btn = $("scnBtn"), rt = $("route"); btn.onclick = e => { e.stopPropagation(); const o = !rt.classList.contains("open"); rt.style.left = btn.offsetLeft + "px"; rt.classList.toggle("open", o); btn.setAttribute("aria-expanded", String(o)); };
+    addEventListener("pointerdown", e => { if (rt.classList.contains("open") && !rt.contains(e.target) && e.target !== btn && !btn.contains(e.target)) { rt.classList.remove("open"); btn.setAttribute("aria-expanded", "false"); } }); }
   for (const v of VIEWS2) { const b = document.createElement("button"); b.dataset.id = v.id; b.textContent = v.id === "free" ? "둘러보기" : v.name; b.onclick = () => start(v); $("views").appendChild(b); }
   $("env").appendChild($("wx")); { const w = $("wx"), btn = [...w.querySelectorAll("button")], g1 = document.createElement("div"), g2 = document.createElement("div"), g3 = document.createElement("div"); g1.className = g2.className = g3.className = "grp"; btn.forEach(b => (b.dataset.s ? g1 : b.dataset.w ? g2 : g3).appendChild(b)); w.innerHTML = ""; w.append(g1, g2, g3); }
   $("out").appendChild($("map")); $("out").appendChild($("tools"));
@@ -2535,11 +2613,11 @@ async function nowWeather(apply = true) {
     el.textContent = `지금 성수동 ${Math.round(d.air_temperature)}°C ${ko}`; el.title = "날씨: MET Norway(노르웨이 기상청) 예보, CC BY 4.0";
     if (apply) { ENV.season = se; ENV.weather = w; ENV.time = t; ENV.overcast = /cloudy|fog/.test(sym) && w === "clear"; if (w !== "snow" && se !== "winter") ENV.snow = 0; if (!S || S !== SC.sun) applyEnv(); }
   } catch (e) { el.textContent = "지금 날씨를 못 불러왔습니다"; } }
-function uiOnStart(s) { for (const li of $("routeList").children) li.classList.toggle("now", li.dataset.id === s.id); for (const b of $("views").children) b.classList.toggle("on", b.dataset.id === s.id);
+function uiOnStart(s) { for (const li of $("routeList").children) li.classList.toggle("now", li.dataset.id === s.id); if ($("scnNow")) $("scnNow").textContent = SCN.some(q => q.id === s.id) ? s.name : "둘러보기"; for (const b of $("views").children) b.classList.toggle("on", b.dataset.id === s.id);
   PAUSED = false; $("play").textContent = "❚❚"; $("airBtn").classList.toggle("on", air); document.body.classList.remove("showOut"); $("outBtn").textContent = "결과"; }
 function start(s) {
   $("outCharts").innerHTML = "";
-  SFX.ui(); if (fly) { fly = false; scene.fog.far = FLY.fog || 650; $("flyBtn").classList.remove("on"); }   /* 자유 비행 중 시나리오를 고르면 비행을 끝냄(땅에서 하늘만 보이던 것) */
+  SFX.ui(); if (fly) { fly = false; scene.fog.far = FLY.fog || FOGB.far; $("flyBtn").classList.remove("on"); }   /* 자유 비행 중 시나리오를 고르면 비행을 끝냄(땅에서 하늘만 보이던 것) */
   if (window.BINFO) BINFO.close(); clearAll(); scnDef = s; S = SC[s.id]; $("menu").style.display = "none"; $("end").style.display = "none"; $("scnName").textContent = "성수 디지털트윈 · " + s.name;
   player = { x: city.start[0], y: city.start[1], hp: 100, sp: 1 }; pa = makeActor(MAN); pa.root.add(MK_ME); goal = null; T = 0;
   S.init(); initWeapons(); initCars(); $("hpW").style.display = S.hp === false ? "none" : ""; $("tools").textContent = S.tools || ""; $("stat").style.display = ""; $("goal").style.display = "";
@@ -2584,7 +2662,7 @@ function frame(fixed) {
     cityT += dt; if (cityDirty && cityT > 0.8) { cityDirty = false; cityT = 0; buildCity(); drawBase(); }
   }
   updateTrains(dt); updateSound(dt); updateTraffic(dt); updateWeather(dt);
-  { const wr = S === SC.fire ? SC.fire.wdir * Math.PI / 180 : 0, ws = S === SC.fire ? SC.fire.ws : 0; SMOKE2.update(dt, -Math.sin(wr) * ws * 0.7, Math.cos(wr) * ws * 0.7, -0.05); FLAME.update(dt, 0, 0, 1.5); DUST2.update(dt, 0, 0, -0.1); }
+  { const wr = S === SC.fire ? SC.fire.wdir * Math.PI / 180 : 0, ws = S === SC.fire ? SC.fire.ws : 0; SMOKE2.update(dt, -Math.sin(wr) * ws * 0.7, Math.cos(wr) * ws * 0.7, -0.05); FLAME.update(dt, 0, 0, 1.5); DUST2.update(dt, 0, 0, -0.1); WATERJ.update(dt, 0, 0, -2); }
   for (const k in pressed) delete pressed[k];
   SMOKE.update(dt, 0.15); FIREP.update(dt, 0.5); DUST.update(dt, 0.4); RAIN.update(dt);
   BOOM.intensity *= Math.pow(0.02, dt); shake = Math.max(0, shake - dt * 0.6);
