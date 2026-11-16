@@ -1388,7 +1388,7 @@ const BINFO = window.BINFO = (() => {
 #binfo svg text{font-family:inherit}
 @media (max-width:640px){#binfo{top:auto;bottom:76px;height:58vh}}`; document.head.appendChild(st);
   const el = document.createElement("div"); el.id = "binfo"; el.className = "hud"; el.setAttribute("role", "dialog"); el.setAttribute("aria-label", "건물 정보"); document.body.appendChild(el);
-  let INFO = null, SRC = "", FL_SRC = "", STO = null, STO_SRC = "", bChart = null, cur = null, tab = "o", floorSel = null; const hl = new THREE.Group(); hl.renderOrder = 20; scene.add(hl);
+  let INFO = null, SRC = "", FL_SRC = "", STO = null, STO_SRC = "", ENG = null, bChart = null, cur = null, tab = "o", floorSel = null; const hl = new THREE.Group(); hl.renderOrder = 20; scene.add(hl);
   const esc = t => String(t).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
   const fmtN = (v, u, d = 1) => v == null ? '<span class="none">대장에 값 없음</span>' : Number(v).toLocaleString("ko-KR", { maximumFractionDigits: d }) + (u ? " " + u : "");
   const shapeOf = b => { const sh = new THREE.Shape(); for (let i = 0; i < b.p.length; i += 2) (i ? sh.lineTo : sh.moveTo).call(sh, b.p[i], b.p[i + 1]); return sh; };
@@ -1503,9 +1503,9 @@ const BINFO = window.BINFO = (() => {
     let body = "";
     if (tab === "o") body = d ? `<dl><dt>주소</dt><dd>${esc(d.addr || "")}${d.road ? `<br><span style="color:var(--muted)">${esc(d.road)}</span>` : ""}</dd><dt>주용도</dt><dd>${esc(d.use || "") || fmtN(null)}</dd><dt>구조</dt><dd>${esc(d.st || "") || fmtN(null)}</dd>
         <dt>층수</dt><dd>지상 ${d.fu ?? "-"}층 · 지하 ${d.fb ?? 0}층</dd><dt>높이</dt><dd>${fmtN(d.h, "m")}</dd><dt>연면적</dt><dd>${fmtN(d.ga, "㎡")}</dd><dt>건축면적</dt><dd>${fmtN(d.ba, "㎡")}</dd>
-        <dt>대지면적</dt><dd>${fmtN(d.la, "㎡")}</dd><dt>건폐율·용적률</dt><dd>${d.bc != null ? d.bc + "% · " + (d.fr ?? "-") + "%" : fmtN(null)}</dd><dt>사용승인일</dt><dd>${d.ap ? esc(d.ap) : fmtN(null)}</dd></dl>
+        <dt>대지면적</dt><dd>${fmtN(d.la, "㎡")}</dd><dt>건폐율·용적률</dt><dd>${d.bc != null ? d.bc + "% · " + (d.fr ?? "-") + "%" : fmtN(null)}</dd><dt>사용승인일</dt><dd>${d.ap ? esc(d.ap) : fmtN(null)}</dd>${(() => { const E = ENG && ENG[d.pnu]; if (!E) return ""; const ym = q => q[0].slice(0, 4) + "-" + q[0].slice(4); return (E.e ? `<dt>전기 사용량</dt><dd>${Math.round(E.e[1]).toLocaleString("ko-KR")} kWh <span style="color:var(--muted)">(${ym(E.e)}, 필지 전체)</span></dd>` : "") + (E.g ? `<dt>가스 사용량</dt><dd>${Math.round(E.g[1]).toLocaleString("ko-KR")} <span style="color:var(--muted)">(${ym(E.g)}, 필지 전체)</span></dd>` : ""); })()}</dl>
         <div class="row"><a class="btn ghost" href="https://map.naver.com/p/search/${encodeURIComponent((d.addr || "").replace(/^서울특별시 /, "서울 "))}" target="_blank" rel="noopener">네이버 지도에서 보기</a></div>
-        <p class="src">출처: ${esc(SRC)}. 건물통합정보는 건축물대장 표제부 항목을 도형에 붙인 공개 자료입니다. 자료 기준일 ${esc(d.ref || "-")} · 고유번호 ${esc(d.pnu || "-")}</p>`
+        <p class="src">출처: ${esc(SRC)}. 건물통합정보는 건축물대장 표제부 항목을 도형에 붙인 공개 자료입니다. 에너지는 국토교통부 건축HUB 건물에너지정보(지번 단위 월 사용량). 자료 기준일 ${esc(d.ref || "-")} · 고유번호 ${esc(d.pnu || "-")}</p>`
       : `<dl><dt>층수</dt><dd>지상 ${b.f}층(모델 값)</dd><dt>높이</dt><dd>${fmtN(b.h, "m")}(모델 값)</dd></dl><p class="src">이 건물은 OpenStreetMap 으로 채운 건물이라 건축물대장 자료와 짝지어지지 않았습니다.</p>`;
     if (tab === "f") { const FL = d && d.fl, byK = new Map(); if (FL) for (const [k, u, a] of FL) { const e = byK.get(k) || byK.set(k, { u: [], a: 0 }).get(k); if (u && !e.u.includes(u)) e.u.push(u); e.a += a; }
       const ks = []; for (let k = fu; k >= -fb; k--) if (k) ks.push(k); for (const k of byK.keys()) if (!ks.includes(k)) ks.push(k); ks.sort((a, c) => c - a);
@@ -1546,6 +1546,7 @@ const BINFO = window.BINFO = (() => {
   addEventListener("keydown", e => { if (e.key === "Escape" && cur) close(); });
   async function open(b) { if (!INFO) { try { const j = await (await fetch("data/bldg_info.json")).json(); INFO = j.b; SRC = j.src; FL_SRC = j.src_fl || ""; } catch (e) { INFO = []; SRC = "불러오기 실패"; } }
     if (!STO) { try { const j = await (await fetch("data/stores.json")).json(); STO = j.b; STO_SRC = j.src; } catch (e) { STO = {}; } }
+    if (!ENG) { try { ENG = (await (await fetch("data/energy.json")).json()).b; } catch (e) { ENG = {}; } }
     cur = b; floorSel = null; const tb = document.getElementById("top"); if (tb && innerWidth > 640) el.style.top = Math.round(tb.getBoundingClientRect().bottom + 12) + "px"; el.classList.add("on"); outline(b); render(); }
   // ── 지하철역: 서울 열린데이터광장 「지하철 실시간 도착정보」(중계 서버 경유, 인증키는 중계 서버에만) ──
   const SUBWAY_API = /[?&]tt=1/.test(location.search) ? "" : location.hostname === "localhost" || location.hostname === "127.0.0.1" ? "http://localhost:8797/arrival/" : (window.SUBWAY_PROXY || "");   /* ?tt=1: 시간표 화면 시험 */
@@ -1604,7 +1605,8 @@ const DASH = window.DASH = (() => {
   const gradH = (ctx, a, b) => { const c = ctx.chart.ctx, area = ctx.chart.chartArea; if (!area) return a; const g = c.createLinearGradient(area.left, 0, area.right, 0); g.addColorStop(0, b); g.addColorStop(1, a); return g; };
   function clearHL() { for (const b of HL) { paint(b, null); b.tint = null; } HL = []; cityDirty = true; }
   function highlight(fn, hex, label) { clearHL(); const css = "#" + hex.toString(16).padStart(6, "0"); for (const b of B) { const d = INFO[b.ix]; if (fn(b, d)) { paint(b, hex, hex, 0.35); b.tint = css; HL.push(b); } } cityDirty = true; msg(`${label} · 건물 ${fmt(HL.length)}동을 3D 에 칠했습니다`, 3); }
-  async function load() { if (!INFO) INFO = (await (await fetch("data/bldg_info.json")).json()).b; if (!STO) STO = (await (await fetch("data/stores.json")).json()).b; }
+  let ENG = null;
+  async function load() { if (!INFO) INFO = (await (await fetch("data/bldg_info.json")).json()).b; if (!STO) STO = (await (await fetch("data/stores.json")).json()).b; if (!ENG) { try { ENG = (await (await fetch("data/energy.json")).json()).b; } catch (e) { ENG = {}; } } }
   function liveHtml() { const L = window.LIVE && LIVE.data; if (!L || !L.areas) return ""; const A = Object.entries(L.areas), f = n => n == null ? "-" : Math.round(n).toLocaleString("ko-KR");
     return `<h3 style="margin:4px 0 8px;font-size:15px">지금 성수 <span style="color:var(--muted);font-weight:400;font-size:12px">서울 실시간 도시데이터 · ${L.t} 갱신</span></h3>
       <div class="kp">${A.map(([nm, a]) => `<div class="k" style="border-color:${(LIVE.LV[a.lvl] || ["#555"])[0]}66"><span style="display:flex;align-items:center;gap:6px"><i style="width:9px;height:9px;border-radius:50%;background:${(LIVE.LV[a.lvl] || ["#888"])[0]}"></i>${nm}</span><b style="font-size:22px">${a.lvl || "-"}</b><small>${f(a.min)}~${f(a.max)}명 · 도로 ${a.road.idx || "-"} ${a.road.spd ?? "-"}km/h</small></div>`).join("")}
@@ -1651,12 +1653,17 @@ const DASH = window.DASH = (() => {
         <div class="c"><h3>업종 구성</h3><p>상권업종 대분류 · 업체 ${fmt(allS.length)}곳</p><div class="cv"><canvas id="dCat"></canvas></div></div>
         <div class="c"><h3>많은 업종 TOP 10</h3><p>상권업종 소분류 · 누르면 그 업종이 있는 건물 표시</p><div class="cv"><canvas id="dSub"></canvas></div></div>
         <div class="c"><h3>가장 가까운 119까지 거리</h3><p>소방서·119안전센터 직선거리별 건물 수</p><div class="cv"><canvas id="dDist"></canvas></div></div>
+        <div class="c"><h3>전기 사용량 많은 곳 TOP 10</h3><p>건축HUB 건물에너지 · 지번(필지) 단위 월 kWh · 누르면 그 필지 건물 표시</p><div class="cv"><canvas id="dEng"></canvas></div></div>
         <div class="c"><h3>지금 시뮬레이션</h3><p>1초마다 갱신 · 걷는 사람·출동 차량</p><div class="cv"><canvas id="dLive"></canvas></div></div>
       </div>
       <p class="src">출처: 국토교통부 GIS건물통합정보(2026-11-09)·건축HUB 건축물대장 · 소상공인시장진흥공단 상가(상권)정보(2026-09) · 서울 열린데이터광장 소방서·119안전센터 위치. 시뮬레이션 그래프는 화면 속 모의 값입니다.</p>`;
     const tip = { backgroundColor: "rgba(20,24,29,.95)", borderColor: "rgba(255,255,255,.12)", borderWidth: 1, padding: 10, titleFont: { weight: "700" } }, ax = { grid: { color: "rgba(255,255,255,.06)" }, ticks: { color: "#9aa1a8" } };
     const legR = { position: "right", labels: { color: "#cfd3d8", boxWidth: 10, boxHeight: 10, font: { size: 11 } } };
     liveCharts();
+    { const top = Object.entries(ENG || {}).filter(([, v]) => v.e).sort((a, c) => c[1].e[1] - a[1].e[1]).slice(0, 10), nm = pnu => { const i = B.findIndex(b => INFO[b.ix] && INFO[b.ix].pnu === pnu), d = i >= 0 ? INFO[B[i].ix] : null; return d ? (d.nm || B[i].n || (STO[B[i].ix] && STO[B[i].ix][0] && STO[B[i].ix][0][0]) || (d.road || d.addr || "").replace(/^서울특별시\s+\S+\s+/, "").replace(/\s*\(.*\)\s*$/, "")) : pnu; };
+      if (top.length) mk("dEng", { type: "bar", data: { labels: top.map(t => nm(t[0]).slice(0, 14)), datasets: [{ data: top.map(t => t[1].e[1]), borderRadius: 6, backgroundColor: c => gradH(c, "#2ec4b6", "rgba(46,196,182,.18)") }] },
+        options: { indexAxis: "y", maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => Math.round(c.raw).toLocaleString("ko-KR") + " kWh (" + top[c.dataIndex][1].e[0].slice(0, 4) + "-" + top[c.dataIndex][1].e[0].slice(4) + ")" } } }, scales: { x: { grid: { color: "rgba(255,255,255,.06)" }, ticks: { color: "#9aa1a8" } }, y: { grid: { display: false }, ticks: { color: "#cfd3d8", font: { size: 11 } } } },
+          onClick: (e, a) => { if (!a.length) return; const pn = top[a[0].index][0]; highlight((b, d) => d && d.pnu === pn, 0x2ec4b6, "전기 사용량 " + (a[0].index + 1) + "위"); } } }); }
     mk("dUse", { type: "doughnut", data: { labels: useTop.map(u => u[0]), datasets: [{ data: useTop.map(u => u[1]), backgroundColor: PAL, borderWidth: 0, hoverOffset: 10 }] },
       options: { cutout: "64%", maintainAspectRatio: false, animation: { animateRotate: true, duration: 900 }, plugins: { legend: legR, tooltip: tip },
         onClick: (e, a) => { if (!a.length) return; const k = useTop[a[0].index][0]; if (k === "기타") return; highlight((b, d) => d && (d.use || "대장에 용도 없음") === k, parseInt(PAL[a[0].index].slice(1), 16), "주용도 " + k); } } });
