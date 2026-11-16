@@ -1081,7 +1081,7 @@ function declutter(dt) {   // 떠 있는 표지는 내 위치(항공 보기에�
   const px = cp.x + dir.x * tt, py = -(cp.z + dir.z * tt), near = (o, r) => { const dx = o.position.x - px, dy = -o.position.z - py, ex = o.position.x - cp.x, ez = o.position.z - cp.z; return dx * dx + dy * dy < r * r && ex * ex + ez * ez < (r * 3) ** 2; };   /* 카메라에서도 멀면 숨김 */
   for (const sp of FAC_SPR) sp.visible = FAC_ON && near(sp, 90);
   for (const sp of STN_SPR) sp.visible = near(sp, 400);
-  SIGN.tick();
+  SIGN.tick(); if (window.HUD) HUD.show();
   if (window.LIVE && LIVE.grp) for (const sp of LIVE.grp.children) sp.visible = near(sp, 180);
   { const R2 = (LOW ? 170 : 380) ** 2, lx = px, lz = -py;   // 가로수(그루당 삼각형 8천 개): 카메라·보는 지점 가까운 것만 그림
     for (const im of TREE_IMS) { const A = im.userData.all, n = im.userData.n, M = im.instanceMatrix.array; if (!A) continue; let k = 0;
@@ -1791,7 +1791,7 @@ const LIVE = window.LIVE = (() => {
     if (!data) { chip.innerHTML = `<i style="background:#666"></i><span>실시간 자료 없음</span>`; return; }
     const a = data.areas["성수카페거리"] || Object.values(data.areas)[0]; if (!a) return; const c = (LV[a.lvl] || ["#888"])[0], f = n => n >= 10000 ? (n / 10000).toFixed(1).replace(/\.0$/, "") + "만" : Math.round(n).toLocaleString("ko-KR");
     chip.innerHTML = `<i style="background:${c}"></i><b>성수카페거리 ${a.lvl}</b><span>${f(a.min)}~${f(a.max)}명 · 도로 ${a.road.idx || "-"} ${a.road.spd ?? "-"}km/h · ${a.wx.temp ?? "-"}℃ · 초미세 ${a.wx.pm25 ?? "-"} · ${(a.time || data.t || "").slice(11)} 기준</span>`;
-    markers(); crowd(); if (window.DASH && DASH.isOpen && DASH.isOpen()) DASH.open(); }
+    markers(); crowd(); if (window.HUD) HUD.render(); if (window.DASH && DASH.isOpen && DASH.isOpen()) DASH.open(); }
   load(); setInterval(load, 300000);
   return { get data() { return data; }, LV, markers, crowd, reload: load, grp }; })();
 // ══ 그래프(Chart.js 4) — 조작판 안 실시간 그래프 ══
@@ -2916,6 +2916,7 @@ let PAUSED = false, SPK = 1;
   $("out").appendChild($("map")); $("out").appendChild($("tools"));
   for (const id of ["flyBtn", "sndBtn"]) { const b = $(id); b.className = "ico"; b.removeAttribute("style"); $("time").appendChild(b); }
   $("flyBtn").textContent = "✈ 자유 비행"; $("flyBtn").title = "G: 자유 비행 (WASD 이동, Space 위, C 아래)";
+  { const hb = document.createElement("button"); hb.id = "hudBtn"; hb.className = "ico"; hb.title = "화면 가장자리 그래프(HUD) 켜고 끄기"; hb.onclick = () => window.HUD && HUD.toggle(); $("time").appendChild(hb); setTimeout(() => { hb.classList.toggle("on", !!(window.HUD && HUD.on)); hb.textContent = window.HUD && HUD.on ? "HUD 켜짐" : "HUD"; }, 0); }
   { const lb = document.createElement("button"); lb.className = "ico" + (LOW ? " on" : ""); lb.id = "lowBtn"; lb.textContent = LOW ? "가볍게 켜짐" : "가볍게"; lb.title = "저사양 기기용: 그림자·그늘 효과·먼 건물·창틀 모델을 줄임(다시 불러옴)";
     lb.onclick = () => { try { localStorage.setItem("twinLow", LOW ? "0" : "1"); } catch (e) {} const u = new URL(location.href); u.searchParams.delete("low"); location.href = u.toString(); }; $("time").appendChild(lb); }
   { const db = document.createElement("button"); db.className = "ico"; db.id = "dashBtn"; db.textContent = "📊 도시 현황"; db.title = "건물·업체·안전 통계 대시보드"; db.onclick = () => DASH.toggle(); $("time").appendChild(db); }
@@ -3023,6 +3024,55 @@ function frame(fixed) {
   window.__sky.position.copy(camera.position); if (AO_ON) COMP.render(); else renderer.render(scene, camera);
 }
 window.__dbgF = { SC, B, camera, scene, renderer, get player() { return player; }, setYaw: v => { yaw = v; }, setView: (d, p) => { dist = d; pitch = p; }, flyTo: (x, y, z, yw, pt) => { if (!fly) toggleFly(); FLY.x = x; FLY.y = y; FLY.z = z; yaw = yw; pitch = pt; },  frame, buildCity, paint };   /* 성능 재기용 */
+// ══ HUD: 둘러보기 화면 가장자리 그래프(평소). 큰 대시보드는 아래 막대 「도시 현황」. 시나리오·건물 팝업·대시보드가 열리거나 폭 1100px 미만이면 숨김 ══
+const HUD = window.HUD = (() => {
+  let ON = true; try { ON = localStorage.getItem("twinHud") !== "0"; } catch (e) {}
+  const st = document.createElement("style"); st.textContent = `
+#hudL{position:fixed;left:16px;top:calc(var(--topH,90px) + 12px);bottom:16px;width:300px;display:none;flex-direction:column;gap:10px;z-index:4}
+#hudR{position:fixed;right:16px;bottom:16px;width:340px;display:none;flex-direction:column;gap:10px;z-index:4}
+body.hudOn #hudL,body.hudOn #hudR{display:flex} body.hudOn #out{max-height:calc(100vh - var(--topH,90px) - 440px)}
+.hp{background:rgba(10,16,22,.5);border:1px solid rgba(160,200,220,.16);border-radius:12px;backdrop-filter:blur(6px);padding:11px 13px;color:#e9eef2;font-variant-numeric:tabular-nums}
+.hp h4{margin:0 0 6px;font-size:11.5px;font-weight:600;color:#8e9aa4;display:flex;justify-content:space-between;gap:8px}.hp h4 em{font-style:normal;color:#6f7c86;font-weight:400}
+#hudL .hp.grow{flex:1;min-height:0;display:flex;flex-direction:column} #hudL .hp.grow .hcv{flex:1;height:auto;min-height:0} #hudR .hp{height:150px;display:flex;flex-direction:column} .hcv{position:relative;flex:1;min-height:0;overflow:hidden}
+.hrow{display:flex;justify-content:space-between;align-items:flex-end;gap:10px}.hbig{font-size:28px;font-weight:800;line-height:1.05}.hbig small{font-size:12.5px;font-weight:600;color:#8e9aa4;margin-left:4px}
+.htag{font-size:11px;font-weight:700;padding:2px 8px;border-radius:99px}
+.hgauge{height:7px;border-radius:99px;background:rgba(255,255,255,.07);overflow:hidden;margin-top:8px}.hgauge i{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,#2ec4b6,#8be8de);transition:width .6s}
+.hmini{font-size:11.5px;color:#8e9aa4;margin-top:7px}.hmini b{color:#e9eef2}
+.hair{display:grid;grid-template-columns:repeat(3,1fr);gap:7px}.hair div{background:rgba(255,255,255,.03);border-radius:8px;padding:6px 8px}.hair b{display:block;font-size:17px}.hair span{font-size:10.5px;color:#8e9aa4}`;
+  document.head.appendChild(st);
+  const L = document.createElement("div"), R = document.createElement("div"); L.id = "hudL"; R.id = "hudR"; document.body.append(L, R);
+  L.innerHTML = `<div class="hp" id="hP1"><h4>지금 성수카페거리<em>불러오는 중</em></h4></div><div class="hp grow"><h4>12시간 혼잡 예측<em>명(구간 가운데)</em></h4><div class="hcv"><canvas id="hC1"></canvas></div></div>
+    <div class="hp grow"><h4>업종 분포<em id="hCatN"></em></h4><div class="hcv"><canvas id="hC2"></canvas></div></div><div class="hp" id="hP4"></div>`;
+  R.innerHTML = `<div class="hp"><h4>건물 주용도<em id="hUseN"></em></h4><div class="hcv"><canvas id="hC3"></canvas></div></div><div class="hp"><h4>전기 사용량 많은 곳<em>건축HUB · kWh</em></h4><div class="hcv"><canvas id="hC4"></canvas></div></div>`;
+  const h = v => String(v ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])), n0 = v => v == null ? "-" : Math.round(v).toLocaleString("ko-KR");
+  const LVC = { "여유": ["#2ec4b6", 0.2], "보통": ["#9bd24b", 0.45], "약간 붐빔": ["#ffcf4a", 0.7], "붐빔": ["#ff6b5b", 0.92] };
+  const COL = ["#2ec4b6", "#4fb3ff", "#ffcf4a", "#ff8a5b", "#b48cff", "#56636d"], grid = { color: "rgba(160,200,220,.07)" };
+  const base = () => ({ maintainAspectRatio: false, animation: { duration: LOW ? 0 : 700 }, plugins: { legend: { display: false } } });
+  const gr = (c, a, b) => { const x = c.chart.ctx, H = c.chart.height || 100, g = x.createLinearGradient(0, 0, 0, H); g.addColorStop(0, a); g.addColorStop(1, b); return g; };
+  let stats = null, ch = {}, fk = "";
+  const mk = (id, cfg) => { if (!window.Chart) return; if (ch[id]) ch[id].destroy(); ch[id] = new Chart(document.getElementById(id), cfg); };
+  fetch("data/hud_stats.json").then(r => r.json()).then(j => { stats = j; statCharts(); }).catch(() => {});
+  function statCharts() { if (!stats || !window.Chart) return; Chart.defaults.color = "#8e9aa4"; Chart.defaults.font.family = "Pretendard";
+    document.getElementById("hCatN").textContent = "상가정보 " + n0(stats.store_n) + "곳"; document.getElementById("hUseN").textContent = "건물통합정보 " + n0(stats.bldg_n) + "동";
+    mk("hC2", { type: "doughnut", data: { labels: stats.cat.map(c => c[0]), datasets: [{ data: stats.cat.map(c => c[1]), backgroundColor: COL, borderWidth: 0 }] }, options: { ...base(), cutout: "64%", plugins: { legend: { display: true, position: "right", labels: { boxWidth: 8, font: { size: 10.5 } } } } } });
+    mk("hC3", { type: "bar", data: { labels: stats.use.map(c => c[0]), datasets: [{ data: stats.use.map(c => c[1]), backgroundColor: COL, borderRadius: 5 }] }, options: { ...base(), scales: { x: { grid: { display: false }, ticks: { font: { size: 10 } } }, y: { grid, ticks: { font: { size: 10 } } } } } });
+    mk("hC4", { type: "bar", data: { labels: stats.elec.map(c => c[0].length > 9 ? c[0].slice(0, 9) + "…" : c[0]), datasets: [{ data: stats.elec.map(c => c[1]), backgroundColor: c => gr(c, "#2ec4b6", "rgba(46,196,182,.25)"), borderRadius: 5 }] },
+      options: { ...base(), plugins: { legend: { display: false }, tooltip: { callbacks: { title: it => stats.elec[it[0].dataIndex][0], label: c => n0(c.raw) + " kWh (" + stats.elec[c.dataIndex][2].slice(0, 4) + "-" + stats.elec[c.dataIndex][2].slice(4) + ")" } } },
+        scales: { x: { grid: { display: false }, ticks: { font: { size: 9.5 } } }, y: { grid, ticks: { font: { size: 10 }, callback: v => v >= 1e6 ? v / 1e6 + "백만" : v / 1e3 + "천" } } } } }); }
+  function render() { const d = window.LIVE && LIVE.data, a = d && d.areas && d.areas["성수카페거리"]; if (!a) return;
+    const [col, k] = LVC[a.lvl] || LVC["보통"];
+    document.getElementById("hP1").innerHTML = `<h4>지금 성수카페거리<em>${h((a.time || "").slice(11))} 기준</em></h4><div class="hrow"><div class="hbig">${n0(a.min)}<small>~${n0(a.max)}명</small></div><span class="htag" style="background:${col}2e;color:${col}">${h(a.lvl)}</span></div>
+      <div class="hgauge"><i style="width:${k * 100}%"></i></div><div class="hmini">상주 <b>${h(a.resnt)}%</b> · 남 <b>${h(a.male)}%</b>${a.cmrcl && a.cmrcl.lvl ? ` · 상권 <b>${h(a.cmrcl.lvl)}</b>` : ""}${a.wx && a.wx.temp != null ? ` · <b>${h(a.wx.temp)}°</b>` : ""}</div>`;
+    const air = d.air || {}, rd = a.road || {};
+    document.getElementById("hP4").innerHTML = `<h4>대기·도로<em>성동구 측정소 · 성수카페거리</em></h4><div class="hair"><div><b>${h(air.pm10 ?? "-")}</b><span>미세먼지</span></div><div><b>${h(air.pm25 ?? "-")}</b><span>초미세 · ${h(air.grade || "")}</span></div><div><b>${h(rd.spd ?? "-")}</b><span>km/h · ${h(rd.idx || "")}</span></div></div>`;
+    const F = a.fcst || [], key = JSON.stringify(F);
+    if (key !== fk && F.length && window.Chart) { fk = key;
+      mk("hC1", { type: "line", data: { labels: F.map(f => (f[0] || "").slice(11, 13) + "시"), datasets: [{ data: F.map(f => (f[2] + f[3]) / 2), borderColor: "#2ec4b6", backgroundColor: c => gr(c, "rgba(46,196,182,.45)", "rgba(46,196,182,0)"), fill: true, tension: 0.4, pointRadius: 0, borderWidth: 2 }] },
+        options: { ...base(), plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => F[c.dataIndex][1] + " · " + n0(F[c.dataIndex][2]) + "~" + n0(F[c.dataIndex][3]) + "명" } } }, scales: { x: { grid: { display: false }, ticks: { font: { size: 10 }, maxRotation: 0, autoSkip: true } }, y: { grid, ticks: { font: { size: 10 }, callback: v => v / 1000 + "천" } } } } }); } }
+  function show() { const bi = document.getElementById("binfo"), v = ON && S === SC.free && !(S && S.pano) && !fly && innerWidth >= 1100 && !(window.DASH && DASH.isOpen()) && !(bi && bi.classList.contains("on"));
+    if (v !== document.body.classList.contains("hudOn")) { document.body.classList.toggle("hudOn", v); if (v) { render(); for (const c of Object.values(ch)) c.resize(); } } }
+  function toggle() { ON = !ON; try { localStorage.setItem("twinHud", ON ? "1" : "0"); } catch (e) {} const b = document.getElementById("hudBtn"); if (b) { b.classList.toggle("on", ON); b.textContent = ON ? "HUD 켜짐" : "HUD"; } show(); }
+  return { render, show, toggle, get on() { return ON; } }; })();
 const QUAL = { lv: 0, ema: 16, last: performance.now(), hold: 0, base: Math.min(devicePixelRatio, LOW ? 0.85 : 1.5), userAO: !LOW };   // 화질 자동 조절
 function qualTick() { const now = performance.now(), d = Math.min(250, now - QUAL.last); QUAL.last = now; if (document.hidden) return; QUAL.ema += (d - QUAL.ema) * 0.05; QUAL.hold -= d;
   if (QUAL.hold > 0) return;
