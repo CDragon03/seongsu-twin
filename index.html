@@ -332,7 +332,7 @@ const COMP = new EffectComposer(renderer); COMP.addPass(new RenderPass(scene, ca
 const GTAO = new GTAOPass(scene, camera, innerWidth, innerHeight); GTAO.updateGtaoMaterial({ radius: 2.5, distanceExponent: 1.5, thickness: 2, scale: 1.2, samples: 12 }); GTAO.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 6, rings: 2, samples: 12 }); GTAO.blendIntensity = 0.85;
 GTAO.overrideVisibility = function () { const cache = this._visibilityCache; this.scene.traverse(o => { cache.set(o, o.visible); if (o.isPoints || o.isLine || (o.userData && o.userData.noAO)) o.visible = false; }); };   /* 그늘 효과에서 뺄 표시(스프라이트는 isLine 을 붙이면 선으로 그려져 안 보임 → noAO 표시로) */
 COMP.addPass(GTAO); { const BL = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0, 0.6, 0.8); BL.enabled = false; COMP.addPass(BL); window.__bloom = BL; } COMP.addPass(new OutputPass()); COMP.addPass(new SMAAPass(innerWidth * renderer.getPixelRatio(), innerHeight * renderer.getPixelRatio()));; /* 후처리 뒤 테두리 계단 없애기(SMAA) */ window.__comp = COMP; let AO_ON = true;   // 건물 밑동·골목 그늘(GTAO). Q 로 끄고 켬
-addEventListener("keydown", e => { if (e.code === "KeyQ" && !e.repeat && document.activeElement.tagName !== "INPUT") { AO_ON = !AO_ON; msg("그늘 효과(AO) " + (AO_ON ? "켬" : "끔"), 1.2); } }); renderer.shadowMap.autoUpdate = false; let shT = 0; const shP = new THREE.Vector3();   // 그림자는 0.25초마다 또는 해·시점이 움직일 때만 다시 그림
+addEventListener("keydown", e => { if (e.code === "KeyQ" && !e.repeat && document.activeElement.tagName !== "INPUT") { AO_ON = !AO_ON; if (window.__qual) window.__qual.userAO = AO_ON; msg("그늘 효과(AO) " + (AO_ON ? "켬" : "끔"), 1.2); } }); renderer.shadowMap.autoUpdate = false; let shT = 0; const shP = new THREE.Vector3();   // 그림자는 0.25초마다 또는 해·시점이 움직일 때만 다시 그림
 const city = await (await fetch("data/city.json")).json();
 const B = city.buildings;
 B.forEach((b, i) => { b.ix = i; }); for (const b of B) { let sx = 0, sy = 0; const n = b.p.length / 2; for (let i = 0; i < b.p.length; i += 2) { sx += b.p[i]; sy += b.p[i + 1]; } b.cx = sx / n; b.cy = sy / n; b.hs = 1; b.gone = false; b.tint = null; }
@@ -1498,7 +1498,8 @@ const BINFO = window.BINFO = (() => {
   const BCOL = ["#00a84d", "#3fa9f5", "#f2c21a", "#e5484d", "#a970ff", "#ff8a3d", "#2ec4b6", "#9aa1a8", "#d16ba5", "#6c8cff"];
   function near(b, list, k) { return list.map(o => ({ ...o, d: Math.hypot(o.x - b.cx, o.y - b.cy) })).sort((a, c) => a.d - c.d).slice(0, k); }
   function render() { const b = cur, d = info(b); if (!b) return;
-    const name = (d && d.nm ? d.nm + (d.dong ? " " + d.dong : "") : b.n) || (d && d.use ? d.use : "이름 없는 건물"), { fu, fb, fh } = floorsOf(b, d);
+    const SBn = (STO && STO[b.ix]) || [], short = t => (t || "").replace(/^서울특별시\s+\S+\s+/, "").replace(/\s*\(.*\)\s*$/, "");   // 이름: 대장 건물명 → 지도 이름 → 입주 업체 → 도로명주소 → 지번주소
+    const name = (d && d.nm ? d.nm + (d.dong ? " " + d.dong : "") : b.n) || (SBn.length ? SBn[0][0] + (SBn.length > 1 ? ` 외 ${SBn.length - 1}곳` : "") : "") || (d && d.road ? short(d.road) : "") || (d && d.addr ? short(d.addr) : "") || "건물", { fu, fb, fh } = floorsOf(b, d);
     let body = "";
     if (tab === "o") body = d ? `<dl><dt>주소</dt><dd>${esc(d.addr || "")}${d.road ? `<br><span style="color:var(--muted)">${esc(d.road)}</span>` : ""}</dd><dt>주용도</dt><dd>${esc(d.use || "") || fmtN(null)}</dd><dt>구조</dt><dd>${esc(d.st || "") || fmtN(null)}</dd>
         <dt>층수</dt><dd>지상 ${d.fu ?? "-"}층 · 지하 ${d.fb ?? 0}층</dd><dt>높이</dt><dd>${fmtN(d.h, "m")}</dd><dt>연면적</dt><dd>${fmtN(d.ga, "㎡")}</dd><dt>건축면적</dt><dd>${fmtN(d.ba, "㎡")}</dd>
@@ -1705,7 +1706,7 @@ class Puffs {
     const g = new THREE.BufferGeometry(); g.setAttribute("position", new THREE.BufferAttribute(this.pos, 3)); g.setAttribute("aSize", new THREE.BufferAttribute(this.size, 1)); g.setAttribute("aAlpha", new THREE.BufferAttribute(this.alpha, 1));
     this.mat = new THREE.ShaderMaterial({ transparent: true, depthWrite: false, blending: additive ? THREE.AdditiveBlending : THREE.NormalBlending,
       uniforms: { map: { value: SOFT }, color: { value: new THREE.Color(color) }, uScale: { value: 500 } },
-      vertexShader: "attribute float aSize; attribute float aAlpha; varying float vA; uniform float uScale; void main(){ vec4 mv = modelViewMatrix * vec4(position,1.); gl_PointSize = min(1024., aSize * uScale / max(1., -mv.z)); gl_Position = projectionMatrix * mv; vA = aAlpha; }",
+      vertexShader: "attribute float aSize; attribute float aAlpha; varying float vA; uniform float uScale; void main(){ vec4 mv = modelViewMatrix * vec4(position,1.); gl_PointSize = min(220., aSize * uScale / max(1., -mv.z)); gl_Position = projectionMatrix * mv; vA = aAlpha; }",
       fragmentShader: "uniform sampler2D map; uniform vec3 color; varying float vA; void main(){ vec4 t = texture2D(map, gl_PointCoord); gl_FragColor = vec4(color, t.a * vA); }" });
     this.pts = new THREE.Points(g, this.mat); this.pts.frustumCulled = false; scene.add(this.pts); for (let k = 0; k < n; k++) this.pos[k * 3 + 1] = -999;
   }
@@ -1721,7 +1722,7 @@ class Puffs {
   }
   clear() { this.life.fill(0); this.alpha.fill(0); for (let k = 0; k < this.n; k++) this.pos[k * 3 + 1] = -999; this.update(0); }
 }
-const SMOKE2 = new Puffs(3000, 0x77706a, false), FLAME = new Puffs(1500, 0xff8a2a, true), DUST2 = new Puffs(1200, 0xa89b88, false);
+const SMOKE2 = new Puffs(1600, 0x77706a, false), FLAME = new Puffs(1500, 0xff8a2a, true), DUST2 = new Puffs(1200, 0xa89b88, false);
 const WATERJ = new Puffs(1500, 0xd6ecff, false);   // 소방 방수 물줄기
 const DIRS = [["북", 0], ["북동", 45], ["동", 90], ["남동", 135], ["남", 180], ["남서", 225], ["서", 270], ["북서", 315]];
 const KIND_KO = { brick: "벽돌·조적", concrete: "철근콘크리트", plaster: "주택(미장)", apt: "아파트", glass: "철골·유리", metal: "철골·공장", unknown: "미상" };
@@ -1809,11 +1810,13 @@ SC.fire = { hp: false, air: true, bigShadow: false, tools: "건물을 눌러 발
             const dx = o.cx - b.cx, dy = o.cy - b.cy, L = Math.hypot(dx, dy) || 1, along = (dx * wx + dy * wy) / (L * (this.ws || 1));
             const p = 0.22 * sus * s.I * Math.exp(-g / (2.5 + 0.35 * this.ws)) * Math.max(0.25, 1 + 0.18 * this.ws * along);
             if (Math.random() < p) this.ignite(o); } } } }
-    for (const [b, s] of this.burn) {   // 칠하기·불·연기
-      paint(b, s.I > 0.6 ? 0x3a2a22 : 0x7a4632, 0xff5a12, 0.15 + 0.6 * s.I * (0.8 + 0.2 * Math.sin(T * 7 + b.cx)));
-      const top = b.h, R = Math.sqrt(b.area) * 0.4;
-      for (let q = 0; q < 2; q++) if (Math.random() < 0.9) FLAME.emit(b.cx + rnd(-R, R), top * rnd(0.3, 1.02), -(b.cy + rnd(-R, R)), rnd(-0.5, 0.5), rnd(2, 5), rnd(-0.5, 0.5), rnd(0.6, 1.3), (rnd(4, 8) * s.I + 2) * Math.max(1, R / 6), 1, 0.85);
-      for (let k = 0; k < 2; k++) if (Math.random() < s.I) SMOKE2.emit(b.cx + rnd(-R, R), top + rnd(0, 2), -(b.cy + rnd(-R, R)), wx * 0.6, rnd(2.5, 4.5), -wy * 0.6, rnd(16, 30), rnd(5, 9), rnd(30, 55), 0.22); }
+    const nB = this.burn.size, share = Math.min(1, 24 / Math.max(1, nB)), repaint = (this.rpT = (this.rpT || 0) + dt) > 0.25; if (repaint) this.rpT = 0; const cp = camera.position;
+    for (const [b, s] of this.burn) {   // 칠하기·불·연기 (불탄 건물이 많을수록 건물당 입자를 줄여 화면 전체 입자 수를 일정하게)
+      if (repaint) paint(b, s.I > 0.6 ? 0x3a2a22 : 0x7a4632, 0xff5a12, 0.15 + 0.6 * s.I * (0.8 + 0.2 * Math.sin(T * 7 + b.cx)));
+      const top = b.h, R = Math.sqrt(b.area) * 0.4, far = Math.hypot(b.cx - cp.x, -b.cy - cp.z) > 700;
+      if (Math.random() > share || (far && Math.random() > 0.3)) continue;
+      for (let q = 0; q < 2; q++) if (!far && Math.random() < 0.9) FLAME.emit(b.cx + rnd(-R, R), top * rnd(0.3, 1.02), -(b.cy + rnd(-R, R)), rnd(-0.5, 0.5), rnd(2, 5), rnd(-0.5, 0.5), rnd(0.6, 1.3), (rnd(4, 8) * s.I + 2) * Math.max(1, R / 6), 1, 0.85);
+      for (let k = 0; k < 2; k++) if (Math.random() < s.I) SMOKE2.emit(b.cx + rnd(-R, R), top + rnd(0, 2), -(b.cy + rnd(-R, R)), wx * 0.6, rnd(2.5, 4.5), -wy * 0.6, rnd(10, 18), rnd(5, 9), rnd(22, 38), 0.22); }
     for (const b of this.done) if (Math.random() < 0.15) SMOKE2.emit(b.cx + rnd(-3, 3), b.h * 0.5, -(b.cy + rnd(-3, 3)), wx * 0.5, rnd(1, 2), -wy * 0.5, 12, 3, 14, 0.3);
     let nearF = null, nd = 1e9; for (const b of this.burn.keys()) { const d = Math.hypot(b.cx - player.x, b.cy - player.y); if (d < nd) { nd = d; nearF = b; } }
     for (const w of NPC) { w.mode = nearF && Math.hypot(nearF.cx - w.x, nearF.cy - w.y) < 50 ? "flee" : "walk"; w.from_ = nearF ? { x: nearF.cx, y: nearF.cy } : null; stepWalker(w, dt, w.mode === "flee" ? w.sp * 2 : w.sp); collide(w, 0.35); showActor(w, true, dt, w.mode === "flee" ? 2 : 1); }
@@ -2783,7 +2786,7 @@ function frame(fixed) {
     if (running) { updateWeapons(dt); updateCars(dt); }
     $("hpT").textContent = Math.max(0, Math.round(player.hp)); $("hpB").style.width = Math.max(0, player.hp) + "%";
     $("hpB").style.background = player.hp > 50 ? "var(--ok)" : player.hp > 25 ? "var(--accent)" : "var(--danger)";
-    cityT += dt; if (cityDirty && cityT > 0.8) { cityDirty = false; cityT = 0; buildCity(); drawBase(); }
+    cityT += dt; if (cityDirty && cityT > 1.5) {   /* 건물 상자 다시 짓기는 1.5초에 한 번(64ms 걸림) */ cityDirty = false; cityT = 0; buildCity(); drawBase(); }
   }
   updateTrains(dt); updateSound(dt); updateTraffic(dt); updateWeather(dt);
   { const wr = S === SC.fire ? SC.fire.wdir * Math.PI / 180 : 0, ws = S === SC.fire ? SC.fire.ws : 0; SMOKE2.update(dt, -Math.sin(wr) * ws * 0.7, Math.cos(wr) * ws * 0.7, -0.05); FLAME.update(dt, 0, 0, 1.5); DUST2.update(dt, 0, 0, -0.1); WATERJ.update(dt, 0, 0, -2); }
@@ -2820,7 +2823,17 @@ function frame(fixed) {
   if (pa && S) drawMap(S.marks().concat(CARS.map(c => [c.x, c.y, c.dead ? "#444" : c === DRIVE ? "#f2c230" : "#9aa3ad", 3.5])));
   window.__sky.position.copy(camera.position); if (AO_ON) COMP.render(); else renderer.render(scene, camera);
 }
-renderer.setAnimationLoop(() => { if (RIVER.t) RIVER.t.value = performance.now() / 1000; frame(); });
+window.__dbgF = { frame, buildCity, paint };   /* 성능 재기용 */
+const QUAL = { lv: 0, ema: 16, last: performance.now(), hold: 0, base: Math.min(devicePixelRatio, 1.5), userAO: true };   // 화질 자동 조절
+function qualTick() { const now = performance.now(), d = Math.min(250, now - QUAL.last); QUAL.last = now; if (document.hidden) return; QUAL.ema += (d - QUAL.ema) * 0.05; QUAL.hold -= d;
+  if (QUAL.hold > 0) return;
+  const set = lv => { QUAL.lv = lv; AO_ON = lv === 0 && QUAL.userAO; const pr = lv >= 3 ? Math.min(QUAL.base, 0.75) : lv >= 2 ? Math.min(QUAL.base, 1.0) : QUAL.base;
+    if (renderer.getPixelRatio() !== pr) { renderer.setPixelRatio(pr); renderer.setSize(innerWidth, innerHeight); if (window.__comp) window.__comp.setPixelRatio && window.__comp.setPixelRatio(pr), window.__comp.setSize(innerWidth, innerHeight); }
+    QUAL.hold = 2500; QUAL.ema = 16; };
+  if (QUAL.ema > 45 && QUAL.lv < 3) { set(QUAL.lv + 1); msg(["", "화면이 느려 그늘 효과를 껐습니다", "화면이 느려 해상도를 낮췄습니다", "화면이 느려 해상도를 더 낮췄습니다"][QUAL.lv], 2); }
+  else if (QUAL.ema < 20 && QUAL.lv > 0) { QUAL.hold = 6000; if (QUAL.ema < 20) set(QUAL.lv - 1); } }
+window.__qual = QUAL;
+renderer.setAnimationLoop(() => { qualTick(); if (RIVER.t) RIVER.t.value = performance.now() / 1000; frame(); });
 window.__give = () => { for (let i = 2; i <= 5; i++) INV[i] = 99; equip(5); };   // 점검용
 window.__dbg = () => ({ S: S && S.targets ? S.targets().map(t => [Math.round(t.x - player.x), Math.round(t.y - player.y), Math.round(t.hp)]).slice(0, 5) : null, yaw });
 window.__aim = () => { const t = S.targets().sort((a, b) => Math.hypot(a.x - player.x, a.y - player.y) - Math.hypot(b.x - player.x, b.y - player.y))[0]; if (t) yaw = Math.atan2(-(t.x - player.x), t.y - player.y); return t && Math.round(Math.hypot(t.x - player.x, t.y - player.y)); };
