@@ -190,9 +190,12 @@ const fmt = s => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2,
 
 // ── 장면 ──
 const canvas = $("c");
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5)); renderer.setSize(innerWidth, innerHeight);
-renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+// 가벼운 모드: 휴대폰·메모리 4GB 이하·코어 4개 이하면 자동. ?low=1 / ?low=0 또는 아래 막대 버튼(브라우저에 기억)으로 바꿈
+const LOW = (() => { const q = new URLSearchParams(location.search); if (q.has("low")) return q.get("low") !== "0"; let v = null; try { v = localStorage.getItem("twinLow"); } catch (e) {} if (v != null) return v === "1";
+  return /Android|iPhone|iPad|Mobile/i.test(navigator.userAgent) || (navigator.deviceMemory || 8) <= 4 || (navigator.hardwareConcurrency || 8) <= 4; })(); window.__LOW = LOW;
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: !LOW, powerPreference: "high-performance" });
+renderer.setPixelRatio(Math.min(devicePixelRatio, LOW ? 0.85 : 1.5)); renderer.setSize(innerWidth, innerHeight);
+renderer.shadowMap.enabled = !LOW; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.outputColorSpace = THREE.SRGBColorSpace;
 const scene = new THREE.Scene(); const SKY = new THREE.Color(0xb9c7d3); scene.background = SKY.clone(); scene.fog = new THREE.Fog(0xb9c7d3, 120, 650);
 { const sky = new THREE.Mesh(new THREE.SphereGeometry(2800, 32, 16), new THREE.ShaderMaterial({ side: THREE.BackSide, depthWrite: false, fog: false,
@@ -331,7 +334,7 @@ renderer.toneMappingExposure = 0.85; window.__g = { scene, sun, hemi, renderer, 
 const COMP = new EffectComposer(renderer); COMP.addPass(new RenderPass(scene, camera));
 const GTAO = new GTAOPass(scene, camera, innerWidth, innerHeight); GTAO.updateGtaoMaterial({ radius: 2.5, distanceExponent: 1.5, thickness: 2, scale: 1.2, samples: 12 }); GTAO.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 6, rings: 2, samples: 12 }); GTAO.blendIntensity = 0.85;
 GTAO.overrideVisibility = function () { const cache = this._visibilityCache; this.scene.traverse(o => { cache.set(o, o.visible); if (o.isPoints || o.isLine || (o.userData && o.userData.noAO)) o.visible = false; }); };   /* 그늘 효과에서 뺄 표시(스프라이트는 isLine 을 붙이면 선으로 그려져 안 보임 → noAO 표시로) */
-COMP.addPass(GTAO); { const BL = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0, 0.6, 0.8); BL.enabled = false; COMP.addPass(BL); window.__bloom = BL; } COMP.addPass(new OutputPass()); COMP.addPass(new SMAAPass(innerWidth * renderer.getPixelRatio(), innerHeight * renderer.getPixelRatio()));; /* 후처리 뒤 테두리 계단 없애기(SMAA) */ window.__comp = COMP; let AO_ON = true;   // 건물 밑동·골목 그늘(GTAO). Q 로 끄고 켬
+COMP.addPass(GTAO); { const BL = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0, 0.6, 0.8); BL.enabled = false; COMP.addPass(BL); window.__bloom = BL; } COMP.addPass(new OutputPass()); COMP.addPass(new SMAAPass(innerWidth * renderer.getPixelRatio(), innerHeight * renderer.getPixelRatio()));; /* 후처리 뒤 테두리 계단 없애기(SMAA) */ window.__comp = COMP; let AO_ON = !LOW;   // 건물 밑동·골목 그늘(GTAO). Q 로 끄고 켬
 addEventListener("keydown", e => { if (e.code === "KeyQ" && !e.repeat && document.activeElement.tagName !== "INPUT") { AO_ON = !AO_ON; if (window.__qual) window.__qual.userAO = AO_ON; msg("그늘 효과(AO) " + (AO_ON ? "켬" : "끔"), 1.2); } }); renderer.shadowMap.autoUpdate = false; let shT = 0; const shP = new THREE.Vector3();   // 그림자는 0.25초마다 또는 해·시점이 움직일 때만 다시 그림
 const city = await (await fetch("data/city.json")).json();
 // ── 지형: 국토지리정보원 공개DEM(2025, 90m) → data/terrain_ngii.json(100m 격자, 출발 지점 = 0). 모든 물체의 꼭짓점을 그 자리 땅 높이만큼 올림(정점 셰이더) ──
@@ -591,7 +594,7 @@ const TRAFFIC = { cars: [], parked: [] }; const YIELD = [];   /* {x,y,r}: 이 �
   const LEGAL_PARK = false;   /* 길가 주차: 실제 주차 구획(거주자우선주차·노상 공영주차장) 위치 자료가 들어오기 전까지 세우지 않음 — 아무 데나 세운 차가 불법 주정차처럼 보임(2026-11-16) */
   for (const w of ALL) { if (!LEGAL_PARK || w.w >= 4 || w.w < 2.6) continue; const L = wayLen(w.p), T = L[L.length - 1];   // 골목 주차: 한쪽 길가
     for (let s = 6 + Math.random() * 8; s < T - 6; s += 6 + Math.random() * 14) { if (Math.random() < 0.45) continue; const q = wayAt(w.p, L, s, w.w - 1.1); const t = { x: q.x, y: q.y }; if (inBuilding(q.x, q.y) || collide(t, 1.0)) continue; TRAFFIC.parked.push(q); } }
-  for (const w of MAJOR) { const L = wayLen(w.p), T = L[L.length - 1]; if (T < 60) continue; const n = Math.max(1, Math.round(T / 45));
+  for (const w of MAJOR) { const L = wayLen(w.p), T = L[L.length - 1]; if (T < 60) continue; const n = Math.max(1, Math.round(T / (LOW ? 120 : 45)));
     for (let k = 0; k < n; k++) TRAFFIC.cars.push({ w, L, T, s: Math.random() * T, v: 8 + Math.random() * 5, dir: Math.random() < 0.5 ? 1 : -1, lane: w.w >= 6.5 ? (Math.random() < 0.5 ? w.w * 0.25 : w.w * 0.75) : w.w * 0.5 }); }
   const N = TRAFFIC.parked.length + TRAFFIC.cars.length; TRAFFIC.im = new THREE.InstancedMesh(CAR_G, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.35, metalness: 0.4 }), N);
   TRAFFIC.im.castShadow = true; TRAFFIC.im.receiveShadow = true; TRAFFIC.im.frustumCulled = false; scene.add(TRAFFIC.im);
@@ -673,7 +676,7 @@ const SIGN = (() => {   // 실제 상호 간판: 소상공인시장진흥공단 
       L.push({ mx, my, nx, ny, L: len }); }
     return L.sort((a, c) => c.L - a.L).slice(0, 2); }
   function build(cx, cy) { if (grp) { scene.remove(grp); grp.traverse(o => o.geometry && o.geometry.dispose()); } grp = new THREE.Group(); g.clearRect(0, 0, cv.width, cv.height);
-    const d2 = b => (b.cx - cx) ** 2 + (b.cy - cy) ** 2, near = B.filter(b => STO[b.ix] && b.h >= 3 && d2(b) < 230 * 230).sort((a, c) => d2(a) - d2(c));
+    const d2 = b => (b.cx - cx) ** 2 + (b.cy - cy) ** 2, near = B.filter(b => STO[b.ix] && b.h >= 3 && d2(b) < (LOW ? 150 : 230) ** 2).sort((a, c) => d2(a) - d2(c));
     const P = [], UV = [], box = []; let i = 0;
     const addBox = (x, y, z0, w, h, d, ang) => { const q = new THREE.BoxGeometry(w, h, d); q.rotateY(ang); q.translate(x, z0 + h / 2, -y); box.push(q.toNonIndexed()); };
     for (const b of near) { if (i >= NC - 4) break; const S = STO[b.ix].filter(t => !SKIP.has(t[1])); if (!S.length) continue; const F = facades(b); if (!F.length) continue;
@@ -856,22 +859,22 @@ try { $("load").textContent = "성수동 상세 건물 불러오는 중…"; $("
       if (m.name === "옥상") { const r = m.clone(); r.color.setHex(pick([0x4a8a5e, 0x3f7d55, 0x5b9468, 0x9a9a95, 0x8a8b86, 0xa9a8a2, 0x77786f, 0x9c6a5c])); r.roughness = 0.95; return r; }   // 렌더처럼 초록 방수·회색·분홍 섞기
       if (TINT[m.name] != null) { const r = m.clone(); r.color.setHex(TINT[m.name]).multiplyScalar(rnd(0.82, 1.08)); r.roughness = 0.9; return r; } return m; });
     if (o.material.length === 1) o.material = o.material[0]; });
-  scene.add(cd.scene); window.__detail = cd.scene; DETAIL_OK = true; buildCity(); READY.then(() => { linkMeshes(cd.scene); mergeStatic(cd.scene); MODEL_LINKED = true; buildCity(); });
+  slimModel(cd.scene, LOW); scene.add(cd.scene); window.__detail = cd.scene; DETAIL_OK = true; buildCity(); READY.then(() => { linkMeshes(cd.scene); mergeStatic(cd.scene); MODEL_LINKED = true; buildCity(); });
   window.__tintCity = root => root.traverse(o => { if (!o.isMesh) return; o.castShadow = o.receiveShadow = true;
     o.material = [].concat(o.material).map(m => { if (m.userData && m.userData.sharedTex) { const t = SHARED_TEX[(m.name || "").replace(/\.\d+$/, "")]; if (t) { for (const q of ["map", "normalMap", "roughnessMap", "metalnessMap", "emissiveMap"]) m[q] = t.m[q] || null; m.normalScale.copy(t.normalScale); m.needsUpdate = true; } }
       if (m.name === "창유리") return glass; if (m.name === "진열창") return shop;
       if (m.name === "옥상") { const r = m.clone(); r.color.setHex(pick([0x4a8a5e, 0x3f7d55, 0x5b9468, 0x9a9a95, 0x8a8b86, 0xa9a8a2, 0x77786f, 0x9c6a5c])); r.roughness = 0.95; return r; }
       if (TINT[m.name] != null) { const r = m.clone(); r.color.setHex(TINT[m.name]).multiplyScalar(rnd(0.82, 1.08)); r.roughness = 0.9; return r; } return m; });
     if (o.material.length === 1) o.material = o.material[0]; });
-  READY.then(() => loader.loadAsync("models/city_extra.glb")).then(x => { window.__tintCity(x.scene); scene.add(x.scene); window.__extra = x.scene; linkMeshes(x.scene, b => b.o); mergeStatic(x.scene); EXTRA_OK = true; buildCity();
+  READY.then(() => loader.loadAsync("models/city_extra.glb")).then(x => { window.__tintCity(x.scene); slimModel(x.scene, LOW); scene.add(x.scene); window.__extra = x.scene; linkMeshes(x.scene, b => b.o); mergeStatic(x.scene); EXTRA_OK = true; buildCity();
       return loader.loadAsync("models/city_extra2.glb"); }).then(x => {   // 공식 건물 중 상세 모델이 빠졌던 10동(붙는 건물 번호는 전체를 다 불러온 상태에서 뽑아 둔 값)
-      window.__tintCity(x.scene); scene.add(x.scene); linkMeshes(x.scene, b => E2_IDX.has(b.ix)); mergeStatic(x.scene); for (const i of COVERED_IDX) if (B[i]) B[i].covered = true; buildCity(); }).catch(e => console.warn("city_extra", e));
+      window.__tintCity(x.scene); slimModel(x.scene, LOW); scene.add(x.scene); linkMeshes(x.scene, b => E2_IDX.has(b.ix)); mergeStatic(x.scene); for (const i of COVERED_IDX) if (B[i]) B[i].covered = true; buildCity(); }).catch(e => console.warn("city_extra", e));
   // 먼 건물: 200m 칸 파일(models/far/)을 카메라 가까운 칸부터 받음. 아직 안 온 칸은 바닥 윤곽으로 세운 상자가 대신 보임
   READY.then(() => fetch("models/far/index.json")).then(r => r.json()).then(ix => { const FAR = new THREE.Group(); FAR.name = "far"; scene.add(FAR); window.__far = FAR;
     const left = ix.tiles.slice(), busy = new Set(); let dirty = false, lastBuild = 0, done = 0;
-    const one = t => { busy.add(t); loader.loadAsync("models/far/" + t.f).then(f => { window.__tintCity(f.scene); f.scene.traverse(o => { if (o.isMesh) o.castShadow = false; }); FAR.add(f.scene); linkMeshes(f.scene); mergeStatic(f.scene); FAR_OK = true; dirty = true; done++;
+    const one = t => { busy.add(t); loader.loadAsync("models/far/" + t.f).then(f => { window.__tintCity(f.scene); slimModel(f.scene, true); f.scene.traverse(o => { if (o.isMesh) o.castShadow = false; }); FAR.add(f.scene); linkMeshes(f.scene); mergeStatic(f.scene); FAR_OK = true; dirty = true; done++;
         if (done === ix.tiles.length) msg("동네 전체 상세 건물을 다 불러왔습니다", 1.5); }).catch(e => console.warn("far", t.f, e)).finally(() => busy.delete(t)); };
-    const _cw = new THREE.Vector3(); const tick = () => { _cw.copy(window.__sky ? window.__sky.position : camera.position);   /* 카메라 자리는 그리기 직후 값(하늘 구가 따라감) */ const cx = _cw.x, cz = _cw.z, R = Math.min(1700, Math.max(520, _cw.y * 2.6));
+    const _cw = new THREE.Vector3(); const tick = () => { _cw.copy(window.__sky ? window.__sky.position : camera.position);   /* 카메라 자리는 그리기 직후 값(하늘 구가 따라감) */ const cx = _cw.x, cz = _cw.z, R = LOW ? Math.min(900, Math.max(330, _cw.y * 1.8)) : Math.min(1700, Math.max(520, _cw.y * 2.6));
       while (busy.size < 3 && left.length) { let bi = -1, bd = 1e9; left.forEach((t, i) => { const d = Math.hypot(t.x - cx, t.z - cz); if (d < bd) { bd = d; bi = i; } }); if (bd > R) break; one(left.splice(bi, 1)[0]); }
       if (dirty && (!busy.size || performance.now() - lastBuild > 1500)) { dirty = false; lastBuild = performance.now(); buildCity(); renderer.shadowMap.needsUpdate = true; }
       if (left.length || busy.size || dirty) setTimeout(tick, 300); };
@@ -977,7 +980,7 @@ Promise.all(["ginkgo", "zelkova"].map(k => loader.loadAsync(`models/trees/${k}.g
       mat.customProgramCacheKey = () => "tree|" + k;
       const im = new THREE.InstancedMesh(pt.geo, mat, idx.length); im.castShadow = im.receiveShadow = true; im.userData.ever = !!T.ever;
       idx.forEach((ti, j) => { const p = TREE_POS[ti], sc = 0.85 + ((ti * 0.6180339) % 1) * 0.3; q.setFromAxisAngle(up, ti * 2.399); m.compose(V(p.x, p.y, 0), q, new THREE.Vector3(sc, sc, sc)); im.setMatrixAt(j, m); });
-      scene.add(im); TREE_IMS.push(im); } }
+      im.userData.all = im.instanceMatrix.array.slice(); im.userData.n = idx.length; im.frustumCulled = false; scene.add(im); TREE_IMS.push(im); } }
   for (const o of window.__trees || []) o.visible = false; window.__treesGLB = true; seasonTrees(); snowify(scene); });
 function makeActor(src, tint, mark) {
   if (DUMMY_GLB) return makeActorGLB(tint, mark);
@@ -1077,7 +1080,11 @@ function declutter(dt) {   // 떠 있는 표지는 내 위치(항공 보기에�
   for (const sp of FAC_SPR) sp.visible = FAC_ON && near(sp, 90);
   for (const sp of STN_SPR) sp.visible = near(sp, 400);
   SIGN.tick();
-  if (window.LIVE && LIVE.grp) for (const sp of LIVE.grp.children) sp.visible = near(sp, 180); }
+  if (window.LIVE && LIVE.grp) for (const sp of LIVE.grp.children) sp.visible = near(sp, 180);
+  { const R2 = (LOW ? 170 : 380) ** 2, lx = px, lz = -py;   // 가로수(그루당 삼각형 8천 개): 카메라·보는 지점 가까운 것만 그림
+    for (const im of TREE_IMS) { const A = im.userData.all, n = im.userData.n, M = im.instanceMatrix.array; if (!A) continue; let k = 0;
+      for (let i = 0; i < n; i++) { const x = A[i * 16 + 12], z = A[i * 16 + 14], dx = x - cp.x, dz = z - cp.z, ex = x - lx, ez = z - lz; if (dx * dx + dz * dz < R2 || ex * ex + ez * ez < R2) { if (k !== i) M.set(A.subarray(i * 16, i * 16 + 16), k * 16); k++; } }
+      im.count = k; im.instanceMatrix.needsUpdate = true; } } }
 function drawMap(marks) {
   const R = mapR, cx = player.x, cy = player.y, k = mc.width / (2 * R);
   mg.save(); mg.fillStyle = "#1b1e23"; mg.fillRect(0, 0, mc.width, mc.height);
@@ -1371,6 +1378,11 @@ function linkMeshes(root, f) {   // 상세 모델 조각마다 어느 건물인�
     if (!b && f) { let bd = 30; for (const q of B) if (f(q)) { const d = Math.hypot(q.cx - c.x, q.cy + c.z); if (d < bd) { bd = d; b = q; } } } if (b) { (b.meshes || (b.meshes = [])).push(o); o.userData.b = b; } });
 }
 // 그리기 호출 줄이기: 같은 성질 재질 + 200m 구역끼리 한 덩어리로 합침(2만7천 개 → 수백 개). 재질 색은 꼭짓점 색으로 옮겨 건물별 칠하기·숨기기는 그 건물 꼭짓점만 바꿈
+function slimModel(root, heavyToo) {   // 창은 벽 그림·유리판으로 충분히 보여서 창틀·진열 상품 모델을 뺌
+  const kill = []; root.traverse(o => { if (!o.isMesh) return; const ms = [].concat(o.material);
+    if (heavyToo && ms.every(m => /^(창틀|진열 상품|진열대)/.test(m.name || ""))) { kill.push(o); return; }
+    if (o.geometry.attributes.color && !ms.some(m => m.vertexColors)) o.geometry.deleteAttribute("color"); });
+  for (const o of kill) { o.parent && o.parent.remove(o); o.geometry.dispose(); } return kill.length; }
 function mergeStatic(root) {
   root.updateMatrixWorld(true); const groups = new Map(), drop = [];
   root.traverse(o => { if (!o.isMesh || Array.isArray(o.material) || !o.geometry.index) return; const m = o.material, g = o.geometry, sig = Object.keys(g.attributes).sort().join(",");
@@ -1771,7 +1783,7 @@ const LIVE = window.LIVE = (() => {
   function markers() { for (const o of [...grp.children]) { grp.remove(o); o.material.map.dispose(); o.material.dispose(); } if (!data || !FAC_ON) return; const seen = new Set();
     for (const a of Object.values(data.areas || {})) { for (const q of a.prk || []) { if (!q[3] || seen.has(q[0])) continue; seen.add(q[0]); const [x, y] = xy(q[3], q[4]); tag(`P ${q[0].replace(/\s*주차장$/, "")} ${q[2] != null ? `${q[2]}/${q[1]}` : q[1] + "면"}`, "#3a6fd8", x, y); }
       for (const q of a.bike || []) { if (!q[3] || seen.has(q[0])) continue; seen.add(q[0]); const [x, y] = xy(q[4], q[3]); tag(`따릉이 ${q[1]}대`, "#2ec46e", x, y); } } }
-  function crowd() { if (!data || S !== SC.free) return; const a = data.areas["성수카페거리"]; if (!a) return; const k = (LV[a.lvl] || LV["보통"])[1], tgt = Math.round(110 * k);   // 지금 혼잡도에 맞춰 걷는 사람 수(보통=110명, 화면 둘레 기준 가정)
+  function crowd() { if (!data || S !== SC.free) return; const a = data.areas["성수카페거리"]; if (!a) return; const k = (LV[a.lvl] || LV["보통"])[1], tgt = Math.round((LOW ? 40 : 110) * k);   // 지금 혼잡도에 맞춰 걷는 사람 수(보통=110명, 화면 둘레 기준 가정)
     while (NPC.length < tgt) spawnWalker({ rmax: 220 }); while (NPC.length > tgt) { const w = NPC.pop(); scene.remove(w.a.root); } }
   async function load() { try { data = await (await fetch(URL_ + "?t=" + Math.floor(Date.now() / 300000), { cache: "no-store" })).json(); } catch (e) { try { data = await (await fetch("data/live.json")).json(); data.stale = true; } catch (e2) { data = null; } }   /* 자동 갱신본이 없으면 저장소에 넣어 둔 마지막 값 */
     if (!data) { chip.innerHTML = `<i style="background:#666"></i><span>실시간 자료 없음</span>`; return; }
@@ -2505,7 +2517,7 @@ SC.evac = Object.assign(Object.create(SC.crowd), { tools: "땅을 누르면 대�
   marks() { const o = this.OS.map(s => [s.x, s.y, "#f2c230", 6]); for (let i = 0; i < this.A.length; i += 3) { const a = this.A[i]; o.push([a.x, a.y, hex6(rhoCol(a.rho)), a.rho >= 4 ? 3 : 1.6]); } return o; } });
 
 SC.free = { hp: false, tools: "자유롭게 걷기 · V 항공 보기 · G 자유 비행 · 2호선이 고가 위를 다닙니다",
-  init() { for (const o of TRAFFIC.cars) o.crashed = false; for (let i = 0; i < 110; i++) spawnWalker({ rmax: 220 }); msg("일반 보기 · 성수동을 자유롭게 돌아보세요", 2.5); },
+  init() { for (const o of TRAFFIC.cars) o.crashed = false; for (let i = 0; i < (LOW ? 40 : 110); i++) spawnWalker({ rmax: 220 }); msg("일반 보기 · 성수동을 자유롭게 돌아보세요", 2.5); },
   update(dt) { const px = player.x, py = player.y;
     for (const w of NPC) { stepWalker(w, dt, w.sp);
       const dx = w.x - px, dy = w.y - py, d = Math.hypot(dx, dy);   // 나를 뚫고 지나가지 않게: 1.2m 안이면 옆으로 비켜 감
@@ -2902,6 +2914,8 @@ let PAUSED = false, SPK = 1;
   $("out").appendChild($("map")); $("out").appendChild($("tools"));
   for (const id of ["flyBtn", "sndBtn"]) { const b = $(id); b.className = "ico"; b.removeAttribute("style"); $("time").appendChild(b); }
   $("flyBtn").textContent = "✈ 자유 비행"; $("flyBtn").title = "G: 자유 비행 (WASD 이동, Space 위, C 아래)";
+  { const lb = document.createElement("button"); lb.className = "ico" + (LOW ? " on" : ""); lb.id = "lowBtn"; lb.textContent = LOW ? "가볍게 켜짐" : "가볍게"; lb.title = "저사양 기기용: 그림자·그늘 효과·먼 건물·창틀 모델을 줄임(다시 불러옴)";
+    lb.onclick = () => { try { localStorage.setItem("twinLow", LOW ? "0" : "1"); } catch (e) {} const u = new URL(location.href); u.searchParams.delete("low"); location.href = u.toString(); }; $("time").appendChild(lb); }
   { const db = document.createElement("button"); db.className = "ico"; db.id = "dashBtn"; db.textContent = "📊 도시 현황"; db.title = "건물·업체·안전 통계 대시보드"; db.onclick = () => DASH.toggle(); $("time").appendChild(db); }
   { const fb = document.createElement("button"); fb.className = "ico on"; fb.id = "facBtn"; fb.textContent = "시설 표시"; fb.title = "119안전센터·경찰·대피장소·주차장·따릉이 표지 켜고 끄기";
     fb.onclick = () => { FAC_ON = !FAC_ON; fb.classList.toggle("on", FAC_ON); if (window.LIVE) LIVE.markers(); }; $("time").insertBefore(fb, $("flyBtn")); }
@@ -3006,8 +3020,8 @@ function frame(fixed) {
   if (pa && S) drawMap(S.marks().concat(CARS.map(c => [c.x, c.y, c.dead ? "#444" : c === DRIVE ? "#f2c230" : "#9aa3ad", 3.5])));
   window.__sky.position.copy(camera.position); if (AO_ON) COMP.render(); else renderer.render(scene, camera);
 }
-window.__dbgF = { SC, B, camera, get player() { return player; }, setYaw: v => { yaw = v; }, setView: (d, p) => { dist = d; pitch = p; }, flyTo: (x, y, z, yw, pt) => { if (!fly) toggleFly(); FLY.x = x; FLY.y = y; FLY.z = z; yaw = yw; pitch = pt; },  frame, buildCity, paint };   /* 성능 재기용 */
-const QUAL = { lv: 0, ema: 16, last: performance.now(), hold: 0, base: Math.min(devicePixelRatio, 1.5), userAO: true };   // 화질 자동 조절
+window.__dbgF = { SC, B, camera, scene, renderer, get player() { return player; }, setYaw: v => { yaw = v; }, setView: (d, p) => { dist = d; pitch = p; }, flyTo: (x, y, z, yw, pt) => { if (!fly) toggleFly(); FLY.x = x; FLY.y = y; FLY.z = z; yaw = yw; pitch = pt; },  frame, buildCity, paint };   /* 성능 재기용 */
+const QUAL = { lv: 0, ema: 16, last: performance.now(), hold: 0, base: Math.min(devicePixelRatio, LOW ? 0.85 : 1.5), userAO: !LOW };   // 화질 자동 조절
 function qualTick() { const now = performance.now(), d = Math.min(250, now - QUAL.last); QUAL.last = now; if (document.hidden) return; QUAL.ema += (d - QUAL.ema) * 0.05; QUAL.hold -= d;
   if (QUAL.hold > 0) return;
   const set = lv => { QUAL.lv = lv; AO_ON = lv === 0 && QUAL.userAO; const pr = lv >= 3 ? Math.min(QUAL.base, 0.75) : lv >= 2 ? Math.min(QUAL.base, 1.0) : QUAL.base;
