@@ -1549,7 +1549,7 @@ const BINFO = window.BINFO = (() => {
     if (!ENG) { try { ENG = (await (await fetch("data/energy.json")).json()).b; } catch (e) { ENG = {}; } }
     cur = b; floorSel = null; const tb = document.getElementById("top"); if (tb && innerWidth > 640) el.style.top = Math.round(tb.getBoundingClientRect().bottom + 12) + "px"; el.classList.add("on"); outline(b); render(); }
   // ── 지하철역: 서울 열린데이터광장 「지하철 실시간 도착정보」(중계 서버 경유, 인증키는 중계 서버에만) ──
-  const SUBWAY_API = /[?&]tt=1/.test(location.search) ? "" : location.hostname === "localhost" || location.hostname === "127.0.0.1" ? "http://localhost:8797/arrival/" : (window.SUBWAY_PROXY || "");   /* ?tt=1: 시간표 화면 시험 */
+  const SUBWAY_API = /[?&]tt=1/.test(location.search) ? "" : location.hostname === "localhost" || location.hostname === "127.0.0.1" ? "http://localhost:8797/arrival/" : (window.SUBWAY_PROXY || "https://seongsu-subway.dragon-03.workers.dev/arrival/");   /* 공개판: Cloudflare Worker(tools_web/worker) 가 https 로 중계, 인증키는 Worker 비밀값 · ?tt=1: 시간표 화면 시험 */
   const LINE = { "1002": ["2호선", "#00a84d"], "1075": ["수인분당선", "#f5a200"], "1001": ["1호선", "#0052a4"], "1007": ["7호선", "#747f00"], "1005": ["5호선", "#996cac"] };
   let stTimer = null, curSt = null, TT = null;
   async function stRender() { const stn = curSt; if (!stn) return; const nm = stn.name;
