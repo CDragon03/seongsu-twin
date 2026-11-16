@@ -1362,7 +1362,7 @@ canvas.addEventListener("pointerup", e => {
   if (!downXY || Math.hypot(e.clientX - downXY[0], e.clientY - downXY[1]) > 5 || !S || (S.pano)) return;
   const r = canvas.getBoundingClientRect(); PICK_PT.set((e.clientX - r.left) / r.width * 2 - 1, -(e.clientY - r.top) / r.height * 2 + 1); RAY.setFromCamera(PICK_PT, camera);
   const objs = [window.__detail, window.__far, window.__extra, window.__lm, wallMesh, roofMesh].filter(Boolean); const hit = RAY.intersectObjects(objs, true)[0];
-  if (!S.onPick) { if (hit) { const b = hit.object.userData.b || bAt(hit.point.x, -hit.point.z); if (b) BINFO.open(b); } return; }   // 둘러보기: 건물 정보
+  if (!S.onPick) { const sh = RAY.intersectObjects(STN_SPR, false)[0]; if (sh) { BINFO.openStation(sh.object.userData.station); return; } if (hit) { const b = hit.object.userData.b || bAt(hit.point.x, -hit.point.z); if (b) BINFO.open(b); } return; }   // 둘러보기: 건물 정보
   if (!hit) { const g = new THREE.Vector3(); if (!RAY.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), g)) return; S.onPick(null, g.x, -g.z, 0); return; }   // 땅
   const x = hit.point.x, y = -hit.point.z; S.onPick(hit.object.userData.b || bAt(x, y), x, y, hit.point.y);
 });
@@ -1546,8 +1546,31 @@ const BINFO = window.BINFO = (() => {
   async function open(b) { if (!INFO) { try { const j = await (await fetch("data/bldg_info.json")).json(); INFO = j.b; SRC = j.src; FL_SRC = j.src_fl || ""; } catch (e) { INFO = []; SRC = "불러오기 실패"; } }
     if (!STO) { try { const j = await (await fetch("data/stores.json")).json(); STO = j.b; STO_SRC = j.src; } catch (e) { STO = {}; } }
     cur = b; floorSel = null; const tb = document.getElementById("top"); if (tb && innerWidth > 640) el.style.top = Math.round(tb.getBoundingClientRect().bottom + 12) + "px"; el.classList.add("on"); outline(b); render(); }
-  function close() { intExit(); cur = null; el.classList.remove("on"); clearHL(); }
-  return { open, close, get cur() { return cur; } }; })();
+  // ── 지하철역: 서울 열린데이터광장 「지하철 실시간 도착정보」(중계 서버 경유, 인증키는 중계 서버에만) ──
+  const SUBWAY_API = location.hostname === "localhost" || location.hostname === "127.0.0.1" ? "http://localhost:8797/arrival/" : (window.SUBWAY_PROXY || "");
+  const LINE = { "1002": ["2호선", "#00a84d"], "1075": ["수인분당선", "#f5a200"], "1001": ["1호선", "#0052a4"], "1007": ["7호선", "#747f00"], "1005": ["5호선", "#996cac"] };
+  let stTimer = null, curSt = null;
+  async function stRender() { const stn = curSt; if (!stn) return; const nm = stn.name;
+    let body = `<p style="color:var(--muted);margin:0">불러오는 중…</p>`, list = null, err = "";
+    if (!SUBWAY_API) err = "실시간 도착 정보는 중계 서버를 연결하면 표시됩니다(준비 중).";
+    else try { const j = await (await fetch(SUBWAY_API + encodeURIComponent(nm))).json(); list = j.realtimeArrivalList || []; if (!list.length) err = (j.errorMessage && j.errorMessage.message) || j.message || "도착 정보가 없습니다."; } catch (e) { err = "도착 정보를 받지 못했습니다(중계 서버 응답 없음)."; }
+    if (curSt !== stn) return;
+    if (list && list.length) { const g = {}; for (const a of list) { const k = a.subwayId + "|" + a.updnLine + "|" + (a.trainLineNm || "").split(" - ")[1]; (g[k] = g[k] || []).push(a); }
+      body = Object.entries(g).map(([k, L]) => { const [sid, ud, dir] = k.split("|"), ln = LINE[sid] || [sid, "#888"];
+        return `<div style="border:1px solid var(--line);border-radius:10px;padding:10px 12px"><div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><span style="background:${ln[1]};color:#fff;border-radius:99px;padding:2px 9px;font-size:12px;font-weight:700">${ln[0]}</span><b>${esc(dir || ud)}</b><span style="color:var(--muted);font-size:12px">${esc(ud)}</span></div>
+          ${L.slice(0, 3).map(a => `<div style="display:flex;justify-content:space-between;gap:8px;padding:4px 0;border-top:1px solid var(--line)"><span>${esc((a.trainLineNm || "").split(" - ")[0])}${a.btrainSttus ? ` <span style="color:var(--faint);font-size:12px">${esc(a.btrainSttus)}</span>` : ""}</span><b style="color:${+a.barvlDt > 0 && +a.barvlDt < 90 ? "#ffcf4a" : "var(--text)"}">${esc(a.arvlMsg2 || "")}</b></div>`).join("")}</div>`; }).join("");
+      body += `<p class="src">출처: 서울 열린데이터광장 「서울시 지하철 실시간 도착정보」 · 받은 시각 ${esc(list[0].recptnDt || "")} · 20초마다 새로 받음</p>`; }
+    else body = `<p style="color:var(--muted);margin:0">${esc(err)}</p><p class="src">출처: 서울 열린데이터광장 「서울시 지하철 실시간 도착정보」</p>`;
+    el.innerHTML = `<header><small>지하철역 · ${esc(stn.line || "")}</small><h3>${esc(nm)}역</h3><small>${esc(stn.en || "")}</small><button class="x" aria-label="닫기">×</button></header><div class="bd">${body}</div>`; }
+  function openStation(stn) { intExit(); clearHL(); cur = null; curSt = stn; const tb = document.getElementById("top"); if (tb && innerWidth > 640) el.style.top = Math.round(tb.getBoundingClientRect().bottom + 12) + "px"; el.classList.add("on");
+    clearInterval(stTimer); stRender(); stTimer = setInterval(stRender, 20000); }
+  function close() { intExit(); cur = null; curSt = null; clearInterval(stTimer); el.classList.remove("on"); clearHL(); }
+  return { open, close, openStation, get cur() { return cur; } }; })();
+// 지하철역 표지(누르면 실시간 도착)
+const STN_SPR = (city.stations || []).map(st => { const cv = document.createElement("canvas"); cv.width = 320; cv.height = 96; const g = cv.getContext("2d"), col = st.line === "2호선" ? "#00a84d" : st.line === "수인분당선" ? "#f5a200" : "#3a6fd8";
+  g.fillStyle = "rgba(20,24,29,.9)"; g.beginPath(); g.roundRect(4, 8, 312, 72, 36); g.fill(); g.fillStyle = col; g.beginPath(); g.arc(44, 44, 26, 0, 7); g.fill(); g.fillStyle = "#fff"; g.font = "900 26px Pretendard, sans-serif"; g.textAlign = "center"; g.textBaseline = "middle"; g.fillText("역", 44, 46);
+  g.textAlign = "left"; g.font = "800 34px Pretendard, sans-serif"; g.fillText(st.name + "역", 84, 46);
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(cv), depthTest: false, transparent: true, sizeAttenuation: false })); sp.scale.set(0.16, 0.048, 1); sp.position.copy(V(st.x, st.y, 26)); sp.renderOrder = 12; sp.userData.noAO = true; sp.userData.station = st; scene.add(sp); return sp; });
 // ══ 도시 현황 대시보드(Chart.js): 건물통합정보·건축물대장·상가정보·소방 위치로 계산한 실제 수치 + 시뮬레이션 실시간 ══
 const DASH = window.DASH = (() => {
   const st = document.createElement("style"); st.textContent = `
