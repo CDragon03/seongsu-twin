@@ -479,6 +479,22 @@ let LIVE = null;
 function jamAlleys() { const hot = D.p.features.filter(f => f.properties.t === "명소").map(f => f.geometry.coordinates), lvl = LIVE ? ({ "여유": 0.35, "보통": 0.6, "약간 붐빔": 0.85, "붐빔": 1 }[LIVE.lvl] ?? 0.5) : 0.5;
   const F = D.r.features.filter(f => f.properties.w < 6 && f.geometry.coordinates.some(c => hot.some(h => dist(c, h) < 150))).map(f => ({ ...f, properties: { ...f.properties, o: lvl } }));
   map.getSource("jam").setData({ type: "FeatureCollection", features: F }); }
+// ── 날씨 아이콘: 실시간 도시데이터 하늘상태(맑음·구름많음·흐림)와 강수형태(비·눈·비/눈·소나기), 강수 안내 글의 「안개」. 밤(19~6시) 맑음은 달
+function wxIcon(wx) { const pty = wx.pty && wx.pty !== "없음" ? wx.pty : "", sky = wx.sky || "", h = new Date().getHours(), night = h >= 19 || h < 6, fog = /안개/.test(wx.pcp || "") || /안개/.test(sky);
+  const sun = '<circle cx="12" cy="12" r="4.2" fill="#ffd84d"/><g stroke="#ffd84d" stroke-width="1.8" stroke-linecap="round"><path d="M12 2.5v2.6M12 18.9v2.6M2.5 12h2.6M18.9 12h2.6M5.3 5.3l1.8 1.8M16.9 16.9l1.8 1.8M5.3 18.7l1.8-1.8M16.9 7.1l1.8-1.8"/></g>';
+  const moon = '<path d="M15.5 3.5a8.5 8.5 0 1 0 5 13.6 7 7 0 0 1-5-13.6z" fill="#f4e7a8"/>';
+  const cloud = (c = "#c9d3e2", dx = 0, dy = 0) => `<path transform="translate(${dx} ${dy})" d="M7.5 18.5h9.2a4 4 0 0 0 .4-8 5.4 5.4 0 0 0-10.3 1.6 3.2 3.2 0 0 0 .7 6.4z" fill="${c}"/>`;
+  const drops = '<g stroke="#4fb3ff" stroke-width="1.8" stroke-linecap="round"><path d="M9 20.5l-1 2.3M13 20.5l-1 2.3M17 20.5l-1 2.3"/></g>';
+  const flakes = '<g fill="#ffffff"><circle cx="8.5" cy="21.6" r="1.1"/><circle cx="12.5" cy="22.4" r="1.1"/><circle cx="16.5" cy="21.6" r="1.1"/></g>';
+  let body, label;
+  if (/비\/눈|진눈/.test(pty)) { body = cloud("#9fb0c4", 0, -3) + '<g stroke="#4fb3ff" stroke-width="1.8" stroke-linecap="round"><path d="M9 18l-1 2.3M15 18l-1 2.3"/></g><g fill="#fff"><circle cx="12" cy="20.5" r="1.1"/><circle cx="17.5" cy="21" r="1.1"/></g>'; label = pty; }
+  else if (/눈/.test(pty)) { body = cloud("#c9d3e2", 0, -3) + flakes.replace(/cy="2/g, 'cy="1'); label = pty; }
+  else if (/비|소나기|빗/.test(pty)) { body = cloud("#9fb0c4", 0, -3) + drops.replace(/M(\d+) 20\.5/g, "M$1 17.5"); label = pty; }
+  else if (fog) { body = '<g stroke="#c9d3e2" stroke-width="2" stroke-linecap="round"><path d="M4 8h16M2.5 12h17M5 16h15M3.5 20h12"/></g>'; label = "안개"; }
+  else if (/흐림/.test(sky)) { body = cloud("#8e9bb0", -2, -2) + cloud("#c9d3e2", 1, 1); label = sky; }
+  else if (/구름/.test(sky)) { body = `<g transform="translate(-3 -3) scale(.8)">${night ? moon : sun}</g>` + cloud("#dfe6f0", 1, 1); label = sky; }
+  else { body = night ? moon : sun; label = sky || "맑음"; }
+  return { svg: `<svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true" style="flex:none">${body}</svg>`, label }; }
 // ── HUD(처음 3D 화면과 같은 구성, Chart.js): 성수카페거리 실시간·12시간 예측·업종 분포·대기·도로 / 성수역 열차·버스·건물 주용도·전기 사용량
 const HC = ["#2ec4b6", "#4fb3ff", "#ffcf4a", "#ff8a5b", "#b48cff", "#56636d"], HG = { color: "rgba(160,200,220,.07)" }, n0 = v => v == null ? "-" : Math.round(v).toLocaleString("ko-KR"), hch = {};
 const hbase = () => ({ maintainAspectRatio: false, animation: { duration: 600 }, plugins: { legend: { display: false } } });
@@ -523,7 +539,7 @@ async function live() {
   try { const j = await (await fetch(url + "?t=" + Math.floor(Date.now() / 300000), { cache: "no-store" })).json(), a = j.areas && j.areas["성수카페거리"]; if (!a) return; LIVE = a;
     const col = { "여유": "#35d07f", "보통": "#ffc845", "약간 붐빔": "#ff9a3d", "붐빔": "#ff5a4a" }[a.lvl] || "#9aabc2";
     $("crowd").innerHTML = `<span class="dot" style="background:${col}"></span><span>성수카페거리 <b>${esc(a.lvl)}</b> · ${Math.round(a.min).toLocaleString("ko-KR")}~${Math.round(a.max).toLocaleString("ko-KR")}명 · ${esc((a.time || "").slice(11))} 기준</span>`;
-    if (a.wx) $("wx").textContent = `${a.wx.temp}℃ · ${a.wx.sky || ""}${a.wx.pty && a.wx.pty !== "없음" ? " · " + a.wx.pty : ""} · 미세먼지 ${a.wx.air || "-"}`;
+    if (a.wx) { const w = wxIcon(a.wx); $("wx").innerHTML = `${w.svg}<span>${esc(a.wx.temp)}℃ · ${esc(w.label)} · 미세먼지 ${esc(a.wx.air || "-")}</span>`; $("wx").title = "서울 실시간 도시데이터 · " + esc(a.wx.time || ""); }
     hudLive(j, a); PRK = j; if (map && map.getSource && map.getSource("prk")) setPrk(j);
     if (map && map.getSource("jam")) jamAlleys(); else map && map.once("load", jamAlleys);
   } catch (e) { $("crowd").innerHTML = `<span class="dot" style="background:#6f809a"></span><span>실시간 인파 정보를 받지 못했습니다</span>`; } }
