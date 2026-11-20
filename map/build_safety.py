@@ -68,6 +68,33 @@ for r in json.load(open(os.path.join(S, "fcltOpenInfo_OWI.json"), encoding="utf-
     if r["JRSD_SGG_NM"] == "성동구": add("노인여가복지시설", r["FCLT_NM"], r["FCLT_ADDR"], r.get("FCLT_KIND_NM") or "")
 out["src"]["vul"] = "성동구 유치원 일반현황 · 서울시 노인의료복지시설 현황(2024.12.31) · 서울시 노인여가복지시설 목록"
 out["stat"] = {k: {"성동구": a, "구역 안 건물에 붙음": b} for k, (a, b) in stat.items()}
-for k in ("fw", "eh", "aed", "vul", "bell"): out[k] = {"type": "FeatureCollection", "features": out[k]}
+# ── 이미 받아 둔 자료로 만든 2순위(새로 받지 않음)
+LAT0, LON0 = 37.543, 127.0535; KX = math.cos(math.radians(LAT0)) * 111320.0; KY = 110540.0
+ll = lambda x, y: (LON0 + x / KX, LAT0 + y / KY)
+city = json.load(open(os.path.join(G, "data", "city.json"), encoding="utf-8")); sto = json.load(open(os.path.join(G, "data", "stores.json"), encoding="utf-8"))["b"]
+# 위험물 시설: 건축물대장 주용도 「위험물저장및처리시설」 건물 + 상가정보 소분류 주유소·가스(LPG) 충전소
+out["hz"] = []
+for i, f in inarea.items():
+    if f["properties"].get("g") == "위험물": lo, la = cent(f); out["hz"].append(pt(lo, la, k="위험물 저장·처리시설(건축물대장)", n=f["properties"].get("n") or f["properties"].get("a"), i=i))
+for i, L in sto.items():
+    for x in L:
+        if re.search(r"주유소|LPG|가스 ?충전", x[2]) and len(x) >= 8:
+            lo, la = ll(x[6], x[7])
+            if inb(lo, la): out["hz"].append(pt(lo, la, k=x[2] + "(상가정보)", n=x[0], i=int(i)))
+out["src"]["hz"] = "건축물대장 주용도(위험물저장및처리시설) · 소상공인 상가정보 소분류(주유소·가스 충전소)"
+# 침수 흔적: 서울시 침수흔적도(이미 받아 둔 flood_traces.json)
+fl = json.load(open(os.path.join(G, "data", "flood_traces.json"), encoding="utf-8")); out["fl"] = []
+for f in fl["features"]:
+  for ring in f["r"]:   # 고리마다 한 면
+    R = [list(map(lambda v: round(v, 6), ll(ring[k], ring[k + 1]))) for k in range(0, len(ring) - 1, 2)]
+    if len(R) >= 3 and any(inb(lo, la) for lo, la in R): out["fl"].append({"type": "Feature", "geometry": {"type": "Polygon", "coordinates": [R]}, "properties": {"n": f["n"], "y": f["y"], "d": f["d"], "c": f["c"], "z": f["z"]}})
+out["src"]["fl"] = fl["source"]
+# 대피 장소: 지진옥외대피장소 / 이재민 임시주거시설
+out["sh"] = [pt(*ll(s_["x"], s_["y"]), k="지진옥외대피장소" if s_["k"] == "outdoor" else "이재민 임시주거시설", n=s_["n"], t=s_["t"], a=s_["a"], c=s_["c"]) for s_ in city["shelters"] if inb(*ll(s_["x"], s_["y"]))]
+out["src"]["sh"] = "행정안전부 지진옥외대피장소 · 이재민 임시주거시설(성동구)"
+# 어린이보호구역 대상 학교
+out["sz"] = [pt(*ll(z[0], z[1]), n=z[2] + z[3]) for z in city["official"]["sz"] if inb(*ll(z[0], z[1]))]
+out["src"]["sz"] = "성동구 어린이보호구역 지정 현황"
+for k in ("fw", "eh", "aed", "vul", "bell", "hz", "fl", "sh", "sz"): out[k] = {"type": "FeatureCollection", "features": out[k]}
 json.dump(out, open(os.path.join(M, "safety.json"), "w", encoding="utf-8"), ensure_ascii=False, separators=(",", ":"))
-print("소방용수", len(out["fw"]["features"]), "비상소화장치", len(out["eh"]["features"]), "AED", len(out["aed"]["features"]), "비상벨", len(out["bell"]["features"]), "재난약자", out["stat"], round(os.path.getsize(os.path.join(M, "safety.json")) / 1e3), "KB")
+print("소방용수", len(out["fw"]["features"]), "비상소화장치", len(out["eh"]["features"]), "AED", len(out["aed"]["features"]), "비상벨", len(out["bell"]["features"]), "위험물", len(out["hz"]["features"]), "침수흔적", len(out["fl"]["features"]), "대피", len(out["sh"]["features"]), "보호구역", len(out["sz"]["features"]), "재난약자", out["stat"], round(os.path.getsize(os.path.join(M, "safety.json")) / 1e3), "KB")

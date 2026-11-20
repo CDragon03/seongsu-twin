@@ -114,10 +114,13 @@ body.hudOff #hudL,body.hudOff #hudR,body.cardOn #hudR,body.inc #hudL{display:non
   <label><input type="checkbox" data-l="eh" checked><i style="background:#ffb03b"></i> 비상소화장치</label>
   <label><input type="checkbox" data-l="aed" checked><i style="background:#2fe08a"></i> AED(자동심장충격기)</label>
   <label><input type="checkbox" data-l="vul" checked><i style="background:#e070ff"></i> 재난약자 시설(유치원·노인시설)</label>
+  <label><input type="checkbox" data-l="hz" checked><i style="background:#ff3b30"></i> 위험물 시설(주유소·충전소 등)</label>
+  <label><input type="checkbox" data-l="fl"><i style="background:#3fa7ff"></i> 과거 침수 흔적</label>
+  <label><input type="checkbox" data-l="sz"><i style="background:#ffe14d"></i> 어린이보호구역 학교</label>
   <label><input type="checkbox" data-l="bell" checked><i style="background:#3fd2ff"></i> 안전비상벨</label>
   <label><input type="checkbox" data-l="cctv"><i style="background:var(--cctv)"></i> CCTV</label>
   <label><input type="checkbox" data-l="base" checked><i style="background:var(--police)"></i> 소방·경찰·응급실</label>
-  <label><input type="checkbox" data-l="shel"><i style="background:var(--med)"></i> 대피소</label>
+  <label><input type="checkbox" data-l="shel"><i style="background:var(--med)"></i> 대피 장소(지진옥외·임시주거)</label>
   <label><input type="checkbox" data-l="tr" checked><i style="background:#ffffff"></i> 지하철역·출구</label>
   <label><input type="checkbox" data-l="bus" checked><i style="background:#9be15d"></i> 버스정류장</label>
   <label><input type="checkbox" data-l="prk" checked><i style="background:#4fb3ff"></i> 실시간 주차장</label>
@@ -220,8 +223,8 @@ function setup() {
   map.addLayer({ id: "cctv-dir", type: "line", source: "cdir", minzoom: 15, paint: { "line-color": "#b98cff", "line-width": 2.5, "line-opacity": 0.85 } }, "cctv");
   // 실시간 주차장(서울 실시간 도시데이터): 실시간 자료를 받으면 채움
   map.addSource("prk", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
-  map.addLayer({ id: "prk", type: "circle", source: "prk", minzoom: 14, paint: { "circle-radius": 8, "circle-color": "#4fb3ff", "circle-stroke-color": "#05080d", "circle-stroke-width": 1.5 } });
-  map.addLayer({ id: "l-prk", type: "symbol", source: "prk", minzoom: 14, layout: { "text-field": "P", "text-font": fnt, "text-size": 11, "text-allow-overlap": true }, paint: { "text-color": "#05080d" } });
+  map.addLayer({ id: "prk", type: "circle", source: "prk", minzoom: 15, paint: { "circle-radius": 8, "circle-color": "#4fb3ff", "circle-stroke-color": "#05080d", "circle-stroke-width": 1.5 } });
+  map.addLayer({ id: "l-prk", type: "symbol", source: "prk", minzoom: 15, layout: { "text-field": "P", "text-font": fnt, "text-size": 11, "text-allow-overlap": true }, paint: { "text-color": "#05080d" } });
   if (PRK) setPrk(PRK);
   P("base", "소방", "#ff6b3d", 8, 12); P("base2", "경찰", "#4c8dff", 8, 12); P("base3", "병원", "#35d07f", 8, 12);
   P("hot", "명소", "#ffc845", 7, 13);
@@ -321,11 +324,26 @@ async function openStation(nm) { if (!TT) { try { TT = await (await fetch("../da
 // ── 1순위 안전 자료: 소방용수시설·비상소화장치·AED·재난약자 시설(safety.json, build_safety.py)
 let SAFE = null; const FWC = { "01": "#ff5a4a", "02": "#ff8a7a", "03": "#ff3df0", "04": "#4fb3ff", "05": "#ffd84d" };
 function safetyLayers() { const S = SAFE, fnt = ["Montserrat Medium"];
-  for (const k of ["fw", "eh", "aed", "vul", "bell"]) map.addSource(k, { type: "geojson", data: S[k] });
-  map.addLayer({ id: "bell", type: "circle", source: "bell", minzoom: 14.5, paint: { "circle-radius": 5, "circle-color": "#3fd2ff", "circle-stroke-color": "#03222c", "circle-stroke-width": 2 } }, "veh");
+  for (const k of ["fw", "eh", "aed", "vul", "bell", "hz", "fl", "sh", "sz"]) map.addSource(k === "fl" ? "flood" : k, { type: "geojson", data: S[k] });   // 침수는 「flood」(층별 보기 「fl」과 겹치지 않게)
+  // 과거 침수 흔적(바닥 면) · 위험물 시설 · 대피 장소 구분 · 어린이보호구역 학교
+  map.addLayer({ id: "flood", type: "fill", source: "flood", paint: { "fill-color": "#3fa7ff", "fill-opacity": 0.35 } }, "road-case");
+  map.addLayer({ id: "flood-line", type: "line", source: "flood", paint: { "line-color": "#7cc4ff", "line-width": 1.2 } }, "road-case");
+  map.addLayer({ id: "hz", type: "circle", source: "hz", minzoom: 14, paint: { "circle-radius": 8, "circle-color": "#ff3b30", "circle-stroke-color": "#ffffff", "circle-stroke-width": 2.5 } }, "veh");
+  map.addLayer({ id: "l-hz", type: "symbol", source: "hz", minzoom: 15.5, layout: { "text-field": ["concat", "위험물 · ", ["get", "n"]], "text-font": fnt, "text-size": 11.5, "text-offset": [0, 1.2], "text-anchor": "top", "text-max-width": 10 }, paint: { "text-color": "#ffb3ad", "text-halo-color": "#05080d", "text-halo-width": 2 } });
+  map.addLayer({ id: "sh", type: "circle", source: "sh", minzoom: 13, paint: { "circle-radius": 8, "circle-color": ["match", ["get", "k"], "지진옥외대피장소", "#35d07f", "#2fb6a0"], "circle-stroke-color": "#ffffff", "circle-stroke-width": 2 } }, "veh");
+  map.addLayer({ id: "l-sh", type: "symbol", source: "sh", minzoom: 14.5, layout: { "text-field": ["concat", ["get", "k"], "\n", ["get", "n"]], "text-font": fnt, "text-size": 11, "text-offset": [0, 1.2], "text-anchor": "top", "text-max-width": 12 }, paint: { "text-color": "#bff5d6", "text-halo-color": "#05080d", "text-halo-width": 2 } });
+  map.addLayer({ id: "sz", type: "circle", source: "sz", minzoom: 13, paint: { "circle-radius": 9, "circle-color": "#ffe14d", "circle-stroke-color": "#3a2f00", "circle-stroke-width": 2 } }, "veh");
+  map.addLayer({ id: "l-sz", type: "symbol", source: "sz", minzoom: 14, layout: { "text-field": ["concat", "어린이보호구역 · ", ["get", "n"]], "text-font": fnt, "text-size": 11.5, "text-offset": [0, 1.2], "text-anchor": "top" }, paint: { "text-color": "#fff3a8", "text-halo-color": "#05080d", "text-halo-width": 2 } });
+  for (const id of ["flood", "flood-line", "sz", "l-sz", "sh", "l-sh"]) map.setLayoutProperty(id, "visibility", "none");
+  map.on("click", "hz", e => { if (mode) return; const p = e.features[0].properties; new maplibregl.Popup({ closeButton: false, offset: 10 }).setLngLat(e.lngLat).setHTML(`<b>위험물 · ${esc(p.n)}</b><br><span style="color:#9aabc2">${esc(p.k)}</span>`).addTo(map); });
+  map.on("click", "flood", e => { if (mode) return; const p = e.features[0].properties; new maplibregl.Popup({ closeButton: false, offset: 6 }).setLngLat(e.lngLat).setHTML(`<b>과거 침수 흔적 · ${esc(p.n)}</b><br><span style="color:#9aabc2">${esc(p.c)} · 깊이 ${esc(p.d)}m · ${esc(p.z)}</span>`).addTo(map); });
+  map.on("click", "sh", e => { if (mode) return; const p = e.features[0].properties; new maplibregl.Popup({ closeButton: false, offset: 10 }).setLngLat(e.lngLat).setHTML(`<b>${esc(p.k)} · ${esc(p.n)}</b><br><span style="color:#9aabc2">${p.t ? esc(p.t) + " · " : ""}${p.a ? "면적 " + Math.round(p.a).toLocaleString("ko-KR") + "㎡" : ""}${+p.c ? " · 수용 " + p.c + "명" : ""}</span>`).addTo(map); });
+  map.on("click", "sz", e => { if (mode) return; const p = e.features[0].properties; new maplibregl.Popup({ closeButton: false, offset: 10 }).setLngLat(e.lngLat).setHTML(`<b>어린이보호구역 · ${esc(p.n)}</b><br><span style="color:#9aabc2">주 출입문 반경 300m 안 차량 시속 30km 제한(법정 기준)</span>`).addTo(map); });
+  for (const id of ["hz", "flood", "sh", "sz"]) { map.on("mouseenter", id, () => map.getCanvas().style.cursor = "pointer"); map.on("mouseleave", id, () => map.getCanvas().style.cursor = ""); }
+  map.addLayer({ id: "bell", type: "circle", source: "bell", minzoom: 16, paint: { "circle-radius": 5, "circle-color": "#3fd2ff", "circle-stroke-color": "#03222c", "circle-stroke-width": 2 } }, "veh");
   map.on("click", "bell", e => { if (mode) return; const p = e.features[0].properties; new maplibregl.Popup({ closeButton: false, offset: 10 }).setLngLat(e.lngLat).setHTML(`<b>안전비상벨 · ${esc(p.w || p.k)}</b><br><span style="color:#9aabc2">${esc(p.u)} · ${esc(p.k)}${p.f ? " · " + esc(p.f) : ""}</span><br><span style="color:#6f809a">경찰 연계 ${p.pol === "Y" ? "있음" : "없음"}${p.y ? " · " + esc(p.y) + "년 설치" : ""}${p.ck ? " · 점검 " + esc(p.ck) : ""} · ${esc(p.org)}</span>`).addTo(map); });
   map.on("mouseenter", "bell", () => map.getCanvas().style.cursor = "pointer"); map.on("mouseleave", "bell", () => map.getCanvas().style.cursor = "");
-  map.addLayer({ id: "fw", type: "circle", source: "fw", minzoom: 15, paint: { "circle-radius": ["interpolate", ["linear"], ["zoom"], 15, 2.6, 18, 5.5], "circle-color": ["match", ["get", "c"], ...Object.entries(FWC).flat(), "#ff5a4a"], "circle-stroke-color": "#ffffff", "circle-stroke-width": 1 } }, "veh");
+  map.addLayer({ id: "fw", type: "circle", source: "fw", minzoom: 16, paint: { "circle-radius": ["interpolate", ["linear"], ["zoom"], 16, 3, 18, 5.5], "circle-color": ["match", ["get", "c"], ...Object.entries(FWC).flat(), "#ff5a4a"], "circle-stroke-color": "#ffffff", "circle-stroke-width": 1 } }, "veh");
   map.addLayer({ id: "eh", type: "circle", source: "eh", minzoom: 14.5, paint: { "circle-radius": 6, "circle-color": "#ffb03b", "circle-stroke-color": "#3a1d00", "circle-stroke-width": 2 } }, "veh");
   map.addLayer({ id: "l-eh", type: "symbol", source: "eh", minzoom: 16.5, layout: { "text-field": "비상소화장치", "text-font": fnt, "text-size": 11, "text-offset": [0, 1.1], "text-anchor": "top" }, paint: { "text-color": "#ffd9a0", "text-halo-color": "#05080d", "text-halo-width": 1.8 } });
   map.addLayer({ id: "aed", type: "circle", source: "aed", minzoom: 14.5, paint: { "circle-radius": 6.5, "circle-color": "#2fe08a", "circle-stroke-color": "#04210f", "circle-stroke-width": 2 } }, "veh");
@@ -343,7 +361,12 @@ function safetyLayers() { const S = SAFE, fnt = ["Montserrat Medium"];
 function safetyHtml(i, c) { if (!SAFE) return ""; const V = SAFE.vb[String(i)] || [];
   const nr = (fc, n) => fc.features.map(f => ({ p: f.properties, d: dist(c, f.geometry.coordinates) })).sort((a, b) => a.d - b.d).slice(0, n);
   const fw = nr(SAFE.fw, 2), eh = nr(SAFE.eh, 1), aed = nr(SAFE.aed, 1);
-  return (V.length ? `<div class="vwarn"><b>재난약자 시설</b> · 대피·구조 우선${V.map(v => `<div>${esc(v[0])} · ${esc(v[1])}${v[2] ? ` <span>${esc(v[2])}</span>` : ""}</div>`).join("")}</div>` : "")
+  const hz = nr(SAFE.hz, 3).filter(x => x.d < 150 && x.p.i !== i), self = SAFE.hz.features.filter(f => f.properties.i === i), inP = (pt, R) => { let o = false; for (let a = 0, b = R.length - 1; a < R.length; b = a++) if ((R[a][1] > pt[1]) !== (R[b][1] > pt[1]) && pt[0] < (R[b][0] - R[a][0]) * (pt[1] - R[a][1]) / (R[b][1] - R[a][1]) + R[a][0]) o = !o; return o; };
+  const fls = SAFE.fl.features.filter(f => inP(c, f.geometry.coordinates[0]));
+  const extra = (self.length ? `<div class="vwarn" style="background:rgba(255,59,48,.14);border-color:rgba(255,59,48,.6)"><b style="color:#ffb3ad">위험물 시설</b>${self.map(x => `<div>${esc(x.properties.k)} · ${esc(x.properties.n)}</div>`).join("")}</div>` : "")
+    + (hz.length ? `<div class="row"><span class="warn">반경 150m 안 위험물 시설</span><span>${hz.map(x => esc(x.p.n) + " " + Math.round(x.d) + "m").join(", ")}</span></div>` : "")
+    + (fls.length ? `<div class="row"><span style="color:#7cc4ff;font-weight:700">과거 침수 흔적</span><span>${fls.map(f => esc(f.properties.n) + " · 깊이 " + f.properties.d + "m").join(", ")}</span></div>` : "");
+  return extra + (V.length ? `<div class="vwarn"><b>재난약자 시설</b> · 대피·구조 우선${V.map(v => `<div>${esc(v[0])} · ${esc(v[1])}${v[2] ? ` <span>${esc(v[2])}</span>` : ""}</div>`).join("")}</div>` : "")
     + `<div class="sec"><h2>가장 가까운 소방용수·AED <span class="tag">직선거리</span></h2>`
     + fw.map(x => `<div class="row"><span>${esc(x.p.t)}${x.p.d ? " · " + esc(x.p.d) : ""}</span><span>${Math.round(x.d)}m</span></div>`).join("")
     + eh.map(x => `<div class="row"><span>비상소화장치</span><span>${Math.round(x.d)}m</span></div>`).join("")
@@ -361,10 +384,10 @@ function ui() {
   document.querySelectorAll("[data-c]").forEach(b => b.onclick = () => { document.querySelectorAll("[data-c]").forEach(x => x.classList.toggle("on", x === b));
     map.setPaintProperty("b", "fill-extrusion-color", ["case", ["boolean", ["feature-state", "fire"], false], "#ff5a2e", ["boolean", ["feature-state", "sel"], false], SELC,
       b.dataset.c === "use" ? ["match", ["get", "g"], ...Object.entries(USEC).flat(), "#7d8796"] : b.dataset.c === "height" ? HEIGHTC : b.dataset.c === "photo" ? ["get", "rc"] : MONO]); $("hleg").hidden = b.dataset.c !== "height"; });
-  const grp = { bell: ["bell"], fw: ["fw"], eh: ["eh", "l-eh"], aed: ["aed", "l-aed"], vul: ["vul", "l-vul"], base: ["base", "base2", "base3", "l-base"], tr: ["tr", "st", "l-tr"], shop: ["shop", "l-shop"], cctv: ["cctv", "cctv-dir"], prk: ["prk", "l-prk"] };
+  const grp = { hz: ["hz", "l-hz"], fl: ["flood", "flood-line"], sz: ["sz", "l-sz"], shel: ["sh", "l-sh"], bell: ["bell"], fw: ["fw"], eh: ["eh", "l-eh"], aed: ["aed", "l-aed"], vul: ["vul", "l-vul"], base: ["base", "base2", "base3", "l-base"], tr: ["tr", "st", "l-tr"], shop: ["shop", "l-shop"], cctv: ["cctv", "cctv-dir"], prk: ["prk", "l-prk"] };
   document.querySelectorAll("[data-l]").forEach(c => c.onchange = () => { (grp[c.dataset.l] || [c.dataset.l]).forEach(id => { if (!/^l-(st|base)$/.test(id)) map.setLayoutProperty(id, "visibility", c.checked ? "visible" : "none"); });
     for (const m of BDG[c.dataset.l] || []) m.getElement().style.display = c.checked ? "" : "none"; });
-  ["cctv", "cctv-dir", "shel", "sign"].forEach(id => map.setLayoutProperty(id, "visibility", "none"));
+  ["cctv", "cctv-dir", "shel", "sign"].forEach(id => map.setLayoutProperty(id, "visibility", "none"));   // 옛 대피 점(shel)은 늘 숨김 · 체크는 새 「sh」를 켬
   $("bLay").onclick = () => { const o = !$("lay").classList.contains("on"); $("lay").classList.toggle("on", o); $("bLay").classList.toggle("on", o); $("bLay").setAttribute("aria-expanded", o); };
   $("bHud").onclick = () => { const off = document.body.classList.toggle("hudOff"); $("bHud").classList.toggle("on", !off); $("bHud").textContent = off ? "HUD" : "HUD 켜짐"; Object.values(hch).forEach(c => c.resize()); };
   $("bMenu").onclick = () => { const o = $("emg").hidden; $("emg").hidden = !o; $("bMenu").setAttribute("aria-expanded", o); if (!o) arm(null); };
@@ -401,12 +424,12 @@ function openCard(i, floors = true, focus = null) {
     <div class="sec"><h2>입주</h2><div class="row"><span>상가업소</span><span>${p.sn}곳</span></div>${p.fn ? `<div class="row"><span>등록 공장</span><span>${p.fn}곳</span></div>` : ""}${p.mn ? `<div class="row"><span>현장 확인</span><span>${p.mn}곳</span></div>` : ""}
       ${CAT.length ? `<div class="row"><span>업종</span><span>${CAT.map(([k, n]) => esc(k) + " " + n).join(" · ")}</span></div>` : ""}${S1.length ? `<div class="row"><span>1층</span><span>${S1.map(esc).join(", ")}</span></div>` : ""}</div>
     <div class="sec"><h2>층별 보기 <span class="tag">층 → 호수 → 업체</span></h2>${floorRows(FLOORS, fl, ST, onF)}</div>
-    <p class="src">출처: ${esc(D.src.b)} · 출입구 행정안전부 도로명주소 · ${esc(D.src.store)}${SAFE ? " · " + esc(SAFE.src.fw) + " · " + esc(SAFE.src.aed) + " · " + esc(SAFE.src.bell || "") + " · " + esc(SAFE.src.vul) : ""}. 높이 "추정"은 대장에 높이가 없어 층수로 잡은 값.</p>`;
+    <p class="src">출처: ${esc(D.src.b)} · 출입구 행정안전부 도로명주소 · ${esc(D.src.store)}${SAFE ? " · " + esc(SAFE.src.fw) + " · " + esc(SAFE.src.aed) + " · " + esc(SAFE.src.bell || "") + " · " + esc(SAFE.src.fl || "") + " · " + esc(SAFE.src.vul) : ""}. 높이 "추정"은 대장에 높이가 없어 층수로 잡은 값.</p>`;
   $("card").classList.add("on"); document.body.classList.add("cardOn");
   wireFloors(ST, onF, focus); }
 // ── 층 → 호수 → 업체. 용도가 같고 업체가 없는 연속 층은 「4F~18F 아파트」처럼 한 줄로
 const SRCN = { s: "상가업소(소상공인 상가정보)", f: "등록 공장(성동구 공장등록현황)", m: "현장 확인" };
-const fname = k => k < 0 ? "B" + -k : k + "F", fnum = v => /^B/.test(v) ? -(+v.slice(1)) : +v;
+const fname = k => k < 0 ? "B" + -k : k >= 100 ? "옥탑" + (k > 101 ? k - 100 : "") : k + "F", /* 대장 층번호 101~ = 옥탑 */ fnum = v => /^B/.test(v) ? -(+v.slice(1)) : +v;
 function floorGroups(FLOORS, fl, ST, onF) {
   const sf = ST.map(x => x[2]).filter(Boolean).map(fnum).filter(n => !isNaN(n) && n !== 0), ks = [...new Set([...FLOORS, ...sf])].sort((a, b) => b - a), G = [];
   for (const k of ks) { const o = fl[k], u = o ? [...new Set(o.u)].join(", ") : "용도 자료 없음", n = onF(k).length, last = G[G.length - 1];
@@ -566,6 +589,7 @@ function fireStart() { const f = D.b.features.find(x => x.properties.i === inc.t
   inc.note = "번짐·진압 시간과 대응단계 기준(번진 건물 3·8·20동)은 가정값"; stage(0, `<b>화재 신고 접수</b> · ${esc(inc.name)} (${f.properties.fu || "?"}층${f.properties.fb ? ", 지하 " + f.properties.fb + "층" : ""})`);
   const rd = roadAt(c); if (rd && rd.w < 4) logm(`<span class="warn">앞 도로 폭 ${rd.w}m · 소방차 진입 어려움</span>`);
   if (SAFE) { const V = SAFE.vb[String(inc.t.i)] || []; if (V.length) logm(`<span class="warn">재난약자 시설 · ${V.map(v => esc(v[0] + " " + v[1])).join(", ")} · 대피·구조 우선</span>`);
+    const hz = SAFE.hz.features.map(f => ({ p: f.properties, d: dist(c, f.geometry.coordinates) })).filter(x => x.d < 150); if (hz.length) logm(`<span class="warn">반경 150m 안 위험물 시설 ${hz.length}곳 · ${hz.map(x => esc(x.p.n)).join(", ")} · 번짐 주의</span>`);
     const h = SAFE.fw.features.map(f => ({ p: f.properties, d: dist(c, f.geometry.coordinates) })).sort((a, b) => a.d - b.d)[0]; if (h) logm(`가장 가까운 소방용수: ${esc(h.p.t)} ${Math.round(h.d)}m${h.p.d ? " (" + esc(h.p.d) + ")" : ""}`); }
   stage(1, null); dispatch(near(c, "소방", 3), c, "#ff6b3d", "펌프차", v => { if (inc.st[2] == null) stage(2, `<b>선착대 도착</b> · ${esc(v.n)}`); stage(3, null); });
   dispatch(near(c, "경찰", 1), c, "#4c8dff", "순찰차");
@@ -606,6 +630,7 @@ function crashStart() { const c = inc.c; inc.note = "출동 구성(경찰 1·구
     const arrive = () => { if (++n < 2 && inc.st[2] == null) { stage(2, "<b>첫 차량 현장 도착</b>"); return; } stage(2, null); stage(3, "<b>사고 처리 시작</b> · 차로 통제"); after(600, () => stage(4, `<b>도로 정상화</b> · 사고부터 ${mmss(simT)}`)); };
     dispatch(pol, c, "#4c8dff", "순찰차", arrive);
     dispatch(amb, c, "#35d07f", "구급차", v => { arrive(); if (!er) return; after(180, () => { logm(`${esc(v.n)} 구급차 → ${esc(er.n)} 이송`); const P = routeTo(c, er.c); Object.assign(v, { P, L: lenOf(P), s: 0, arr: 0, label: "구급차(이송)", done: null }); }); }); });
+  if (SAFE) { const z = SAFE.sz.features.map(f => ({ n: f.properties.n, d: dist(c, f.geometry.coordinates) })).filter(x => x.d < 300); if (z.length) logm(`<span class="warn">어린이보호구역 근처 · ${z.map(x => esc(x.n) + " " + Math.round(x.d) + "m").join(", ")} (반경 300m 기준)</span>`); }
   const rd = roadAt(c); if (rd) logm(`사고 도로: ${esc(rd.n || "이름 없는 길")} · 폭 ${rd.w}m${rd.w < 4 ? ' <span class="warn">소방차 진입 어려움</span>' : ""}`);
   inc.pulse = now => map.getSource("fx").setData({ type: "FeatureCollection", features: [ring(c, 22 + 6 * Math.sin(now / 200), "#ff4f6d")] }); }
 
