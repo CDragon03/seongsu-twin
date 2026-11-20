@@ -167,7 +167,7 @@ const map0 = () => new maplibregl.Map({ minZoom: 14.6, maxBounds: [[D.bbox[0][0]
   attributionControl: { customAttribution: "건물 국토교통부 · 항공사진 국토지리정보원 · 배경 © CARTO © OpenStreetMap" } });
 
 (async () => {
-  D = await (await fetch("data.json")).json();
+  D = await (await fetch("data.json", { cache: "no-cache" })).json();
   map = map0(); map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), "bottom-right");
   map.on("load", setup);
   live();
@@ -250,7 +250,7 @@ function setup() {
     layout: { "text-field": ["concat", "● ", ["get", "n"]], "text-font": fnt, "text-size": ["interpolate", ["linear"], ["zoom"], 16, 10.5, 18, 12.5], "text-max-width": 9, "symbol-sort-key": ["-", ["get", "h"]], "text-padding": 4 },
     paint: { "text-color": "#ffffff", "text-halo-color": "rgba(10,18,32,.85)", "text-halo-width": 1.8 } });
   map.setLayoutProperty("l-b", "visibility", "none");
-  fetch("safety.json").then(r => r.json()).then(S => { SAFE = S; safetyLayers(); }).catch(() => {});
+  fetch("safety.json", { cache: "no-cache" }).then(r => r.json()).then(S => { SAFE = S; safetyLayers(); }).catch(() => {});
   jamAlleys(); ui(); graph(); hudTrain(); wireSearch(); badges();
   map.on("click", "b", e => { if (inc) return; const f = e.features[0]; if (mode === "crash") return;
     if (mode === "fire") { const g = D.b.features.find(x => x.properties.i === f.properties.i); return pickTarget({ i: f.properties.i, c: centroid(g), name: g.properties.n || g.properties.a || "이름 없는 건물" }); }
