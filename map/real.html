@@ -1,0 +1,249 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>성수 안전 지도</title>
+<!-- 바탕: 브이월드 WebGL 3D 지도 API 3.0(국토교통부 실사 3D) · 그 위에 출동 카드·위험 표시·긴급 상황(공공데이터) -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="vw_key.js"></script>
+<script>document.write('<script src="https://map.vworld.kr/js/webglMapInit.js.do?version=3.0&apiKey=' + encodeURIComponent(window.VW_KEY || "") + '"><\/script>');</script>
+<style>
+:root{--panel:rgba(11,19,33,.86);--line:rgba(150,180,225,.18);--text:#e9eef6;--muted:#9aabc2;--faint:#6f809a;--fire:#ff6b3d;--police:#4c8dff;--med:#35d07f;--crowd:#ffc845;--cctv:#b98cff}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:#0a1220;color:var(--text);font-family:"Pretendard Variable",Pretendard,"Malgun Gothic",sans-serif;font-variant-numeric:tabular-nums}
+#vmap{position:fixed;inset:0}
+.pn{position:fixed;background:var(--panel);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border:1px solid var(--line);border-radius:12px;z-index:20}
+#top{left:14px;top:14px;right:70px;display:flex;align-items:center;gap:16px;padding:10px 16px;flex-wrap:wrap}
+#top h1{margin:0;font-size:17px;font-weight:800}
+#top .sub{font-size:12px;color:var(--muted)}
+.chip{display:flex;align-items:center;gap:8px;font-size:13px;padding:5px 10px;border:1px solid var(--line);border-radius:999px;white-space:nowrap}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--med)}
+#fc{width:180px;height:38px}
+#lay{left:14px;top:100px;width:220px;padding:12px 14px;font-size:13px}
+#lay h2,#card h2{margin:0 0 8px;font-size:12px;color:var(--muted);font-weight:600}
+#lay label{display:flex;align-items:center;gap:8px;padding:4px 0;cursor:pointer}
+#lay label i{width:14px;height:4px;border-radius:2px;display:inline-block}
+.btn{font:inherit;font-size:12.5px;color:var(--text);background:transparent;border:1px solid var(--line);border-radius:8px;padding:6px 11px;cursor:pointer}
+.btn:hover{border-color:#9aabc2}.btn:focus-visible{outline:2px solid var(--crowd);outline-offset:2px}
+.btn.on{background:#e9eef6;color:#0a1220;font-weight:700}
+.btn.fire{border-color:var(--fire);color:#ffd2c2}.btn.crowd{border-color:var(--crowd);color:#ffe9b0}
+.btn.end{background:var(--fire);border-color:var(--fire);color:#160803;font-weight:800;padding:8px 16px}
+.btn:disabled{opacity:.4;cursor:default}
+#card{right:70px;top:100px;width:340px;max-height:calc(100% - 200px);overflow:auto;padding:14px 16px;display:none;font-size:13px}
+#card.on{display:block}
+#card h3{margin:2px 0;font-size:18px;font-weight:800;line-height:1.3}
+#card .addr{color:var(--muted);font-size:12.5px}
+#card .x{position:absolute;right:10px;top:8px;background:none;border:0;color:var(--muted);font-size:20px;cursor:pointer}
+.kv{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin:12px 0}
+.kv div{border:1px solid var(--line);border-radius:8px;padding:6px 8px}.kv b{display:block;font-size:15px}.kv span{font-size:11px;color:var(--muted)}
+.sec{border-top:1px solid var(--line);padding:10px 0 4px;margin-top:6px}
+.row{display:flex;justify-content:space-between;gap:10px;padding:3px 0}.row span:last-child{color:var(--muted);text-align:right}
+.warn{color:var(--fire);font-weight:700}
+.tag{display:inline-block;font-size:11px;padding:1px 7px;border-radius:999px;border:1px solid var(--line);color:var(--muted);margin-left:4px}
+.src{font-size:11px;color:var(--faint);line-height:1.5;margin-top:8px}
+#ops{left:50%;transform:translateX(-50%);bottom:40px;padding:10px 14px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:center;max-width:calc(100% - 28px)}
+#ops .hint{font-size:12.5px;color:var(--muted)}
+#log{left:14px;bottom:40px;width:300px;max-height:220px;overflow:auto;padding:10px 12px;font-size:12.5px;display:none}
+#log.on{display:block}#log div{padding:3px 0;border-bottom:1px solid var(--line)}#log em{font-style:normal;color:var(--muted);margin-right:6px}
+#pop{position:fixed;z-index:25;display:none;pointer-events:none;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:8px 12px;font-size:13px;max-width:260px}
+#load{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;z-index:30;font-size:14px;color:var(--muted);pointer-events:none}
+@media (max-width:760px){#lay{display:none}#card{left:8px;right:8px;top:auto;bottom:96px;width:auto;max-height:52%}#top{left:8px;right:60px;top:8px;gap:8px}#fc{display:none}#log{left:8px;right:8px;width:auto;bottom:96px;max-height:110px}#ops{bottom:36px}}
+</style>
+</head>
+<body>
+<div id="vmap" role="application" aria-label="성수동 실사 3차원 지도"></div>
+<div id="load">실사 지도 불러오는 중…</div>
+
+<header id="top" class="pn">
+  <div><h1>성수 안전 지도</h1><div class="sub">성수역·연무장길 일대 · 국토교통부 실사 3D + 공공데이터</div></div>
+  <div class="chip" id="crowd"><span class="dot"></span><span>인파 정보 불러오는 중</span></div>
+  <div class="chip" id="wx">날씨 —</div>
+  <canvas id="fc" aria-label="성수카페거리 인파 예측"></canvas>
+</header>
+
+<aside id="lay" class="pn" aria-label="지도 표시">
+  <h2>표시</h2>
+  <label><input type="checkbox" data-l="nar" checked><i style="background:var(--fire)"></i> 소방차 진입 어려운 길</label>
+  <label><input type="checkbox" data-l="jam" checked><i style="background:var(--crowd)"></i> 인파가 몰릴 수 있는 골목</label>
+  <label><input type="checkbox" data-l="base" checked><i style="background:var(--police)"></i> 소방·경찰·응급실</label>
+  <label><input type="checkbox" data-l="hot" checked><i style="background:var(--crowd)"></i> 인파 명소</label>
+  <label><input type="checkbox" data-l="cctv"><i style="background:var(--cctv)"></i> CCTV</label>
+  <label><input type="checkbox" data-l="shel"><i style="background:var(--med)"></i> 대피소</label>
+  <label><input type="checkbox" data-l="tr"><i style="background:#cfd8e6"></i> 지하철 출구·버스</label>
+  <p class="src">건물 모습: 국토교통부 브이월드 실사 3D. 진입 어려운 길 = 폭 4m 미만(가정).</p>
+</aside>
+
+<section id="card" class="pn" aria-live="polite"></section>
+<section id="log" class="pn" aria-label="상황 기록"></section>
+<div id="pop"></div>
+
+<nav id="ops" class="pn" aria-label="긴급 상황">
+  <span class="hint" id="hint">건물을 누르면 출동 카드가 열립니다</span>
+  <button class="btn fire" id="bFire">화재 발생</button>
+  <button class="btn crowd" id="bCrowd">인파 사고</button>
+  <button class="btn end" id="bEnd" hidden>상황 종료</button>
+</nav>
+
+<script>
+(() => {   // 브이월드 라이브러리가 쓰는 전역 이름($ 등)과 겹치지 않게 이 안에만 둠
+const $ = id => document.getElementById(id), esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const R = 6371000, dist = (a, b) => { const r = Math.PI / 180, x = (b[0] - a[0]) * r * Math.cos((a[1] + b[1]) / 2 * r), y = (b[1] - a[1]) * r; return Math.hypot(x, y) * R; };
+const SPEED = 30; // km/h 가정(도심 긴급차량 평균)
+let D, V, C, sel = null, mode = null, inc = null, veh = [], raf = 0, LIVE = null;
+const L = {}; // 표시 묶음(CustomDataSource)
+
+// ── 브이월드 시작
+try { const m = new vw.Map(); m.setOption({ mapId: "vmap", initPosition: new vw.CameraPosition(new vw.CoordZ(127.0556, 37.5395, 650), new vw.Direction(10, -38, 0)), logo: true, navigation: true }); m.start(); }
+catch (e) { $("load").textContent = "실사 지도를 시작하지 못했습니다: " + e.message; }
+const wait = setInterval(async () => { if (!(window.ws3d && ws3d.viewer && window.Cesium)) return; clearInterval(wait); V = ws3d.viewer; C = Cesium; $("load").remove();
+  D = await (await fetch("data.json")).json(); setup(); live(); }, 250);
+setTimeout(() => { if (!V && $("load")) $("load").textContent = "실사 지도가 뜨지 않습니다(브이월드 인증키·주소 확인 필요)"; }, 20000);
+
+const col = (c, a = 1) => C.Color.fromCssColorString(c).withAlpha(a);
+const P3 = (c, h = 0) => C.Cartesian3.fromDegrees(c[0], c[1], h);
+const layer = name => { const ds = new C.CustomDataSource(name); V.dataSources.add(ds); L[name] = ds; return ds; };
+const ground = c => { const h = V.scene.globe.getHeight(C.Cartographic.fromDegrees(c[0], c[1])); return h === undefined ? 0 : h; };
+const lab = (text, color = "#ffffff", size = 13) => ({ text, font: `700 ${size}px "Pretendard Variable", Pretendard, sans-serif`, fillColor: col(color), outlineColor: col("#0a1220"), outlineWidth: 3,
+  style: C.LabelStyle.FILL_AND_OUTLINE, verticalOrigin: C.VerticalOrigin.BOTTOM, pixelOffset: new C.Cartesian2(0, -12), heightReference: C.HeightReference.CLAMP_TO_GROUND, disableDepthTestDistance: Number.POSITIVE_INFINITY,
+  distanceDisplayCondition: new C.DistanceDisplayCondition(0, 2500) });
+const dotG = (color, px = 9) => ({ pixelSize: px, color: col(color), outlineColor: col("#0a1220"), outlineWidth: 2, heightReference: C.HeightReference.CLAMP_TO_GROUND, disableDepthTestDistance: Number.POSITIVE_INFINITY });
+
+function setup() {
+  // 브이월드가 시작할 때 카메라를 전국 보기로 되돌리는 경우가 있어, 성수 위로 올 때까지 몇 번 다시 맞춤
+  const home = () => V.camera.setView({ destination: C.Cartesian3.fromDegrees(127.0553, 37.5378, 520), orientation: { heading: C.Math.toRadians(15), pitch: C.Math.toRadians(-38), roll: 0 } });
+  let ok = 0, tries = 0, touched = false, t0 = performance.now(); V.scene.canvas.addEventListener("pointerdown", () => touched = true, { once: true });
+  // 브이월드가 실사 건물 층을 다 붙인 뒤(장면 요소 20개 넘음, 최대 15초)에 옮겨야 건물이 불러와짐
+  const keep = setInterval(() => { if (touched || ++tries > 120) return clearInterval(keep); if (V.scene.primitives.length < 20 && performance.now() - t0 < 15000) return;
+    if (V.camera.positionCartographic.height > 3000) { home(); ok = 0; } else if (++ok > 8) clearInterval(keep); }, 400);   // 4초 동안 성수 위에 머물면 그만
+  // 길: 좁은 길(소방차 진입 어려움), 인파가 몰릴 수 있는 골목
+  const nar = layer("nar"); for (const f of D.r.features) if (f.properties.nar) nar.entities.add({ polyline: { positions: C.Cartesian3.fromDegreesArray(f.geometry.coordinates.flat()), width: 4, clampToGround: true, material: new C.PolylineDashMaterialProperty({ color: col("#ff6b3d"), dashLength: 10 }) } });
+  layer("jam"); jamAlleys();
+  // 점 자료
+  const kinds = { base: ["소방", "경찰", "병원"], hot: ["명소"], cctv: ["CCTV"], shel: ["대피"], tr: ["출구", "버스", "역"] }, colr = { 소방: "#ff6b3d", 경찰: "#4c8dff", 병원: "#35d07f", 명소: "#ffc845", CCTV: "#b98cff", 대피: "#35d07f", 출구: "#cfd8e6", 버스: "#cfd8e6", 역: "#ffffff" };
+  for (const [k, T] of Object.entries(kinds)) { const ds = layer(k);
+    for (const f of D.p.features) { const p = f.properties; if (!T.includes(p.t)) continue;
+      const showLab = ["명소", "역", "소방", "경찰", "병원"].includes(p.t);
+      ds.entities.add({ position: P3(f.geometry.coordinates), point: dotG(colr[p.t], p.t === "명소" ? 12 : p.t === "CCTV" ? 7 : 9), label: showLab ? lab(p.n, p.t === "명소" ? "#ffe2a0" : "#ffffff", p.t === "역" ? 15 : 12) : undefined, props: p }); } }
+  for (const k of ["cctv", "shel", "tr"]) L[k].show = false;
+  layer("sel"); layer("fx"); layer("veh");
+  // 화면 조작
+  document.querySelectorAll("[data-l]").forEach(c => c.onchange = () => { L[c.dataset.l].show = c.checked; V.scene.requestRender(); });
+  $("bFire").onclick = () => arm("fire"); $("bCrowd").onclick = () => arm("crowd"); $("bEnd").onclick = endIncident;
+  addEventListener("keydown", e => { if (e.key === "Escape") { if (inc) endIncident(); else if (mode) arm(null); else closeCard(); } });
+  const H = new C.ScreenSpaceEventHandler(V.scene.canvas);
+  H.setInputAction(e => onClick(e.position), C.ScreenSpaceEventType.LEFT_CLICK);
+  H.setInputAction(e => hover(e.endPosition), C.ScreenSpaceEventType.MOUSE_MOVE);
+  graph();
+}
+
+// ── 누르기: 점(기관·명소 등) → 아니면 그 자리의 건물(공식 윤곽으로 찾음)
+function lonlatAt(pos) { let w = V.scene.pickPositionSupported ? V.scene.pickPosition(pos) : null; if (!C.defined(w)) w = V.camera.pickEllipsoid(pos); if (!C.defined(w)) return null; const c = C.Cartographic.fromCartesian(w); return [C.Math.toDegrees(c.longitude), C.Math.toDegrees(c.latitude)]; }
+function inPoly(pt, ring) { let o = false; for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) { const a = ring[i], b = ring[j]; if ((a[1] > pt[1]) !== (b[1] > pt[1]) && pt[0] < (b[0] - a[0]) * (pt[1] - a[1]) / (b[1] - a[1]) + a[0]) o = !o; } return o; }
+function buildingAt(c) { let f = D.b.features.find(x => inPoly(c, x.geometry.coordinates[0])); if (f) return f; let best = null, bd = 12; for (const x of D.b.features) { const d = dist(c, centroid(x)); if (d < bd) { bd = d; best = x; } } return best; }
+function onClick(pos) { const pk = V.scene.pick(pos), ent = pk && pk.id && pk.id.props ? pk.id : null;
+  if (ent) { const p = ent.props; if (mode === "crowd" && p.t === "명소") return startCrowd(p, C.Cartographic.fromCartesian(ent.position.getValue(C.JulianDate.now()))); if (!mode) return; }
+  const c = lonlatAt(pos); if (!c) return; const f = buildingAt(c); if (!f) return;
+  if (mode === "fire") return startFire(f); if (!mode) openCard(f); }
+function hover(pos) { const pk = V.scene.pick(pos), p = pk && pk.id && pk.id.props; const el = $("pop");
+  if (!p) { el.style.display = "none"; V.scene.canvas.style.cursor = ""; return; } V.scene.canvas.style.cursor = "pointer";
+  el.innerHTML = `<b>${esc(p.n)}</b><br><span style="color:#9aabc2">${esc(p.t)}${p.k ? " · " + esc(p.k) : ""}${p.tel ? " · " + esc(p.tel) : ""}</span>`; el.style.display = "block"; el.style.left = (pos.x + 14) + "px"; el.style.top = (pos.y + 14) + "px"; }
+
+// ── 출동 카드
+const near = (c, t, n) => D.base.filter(b => b.t === t && !/수난구조|특수구조|구조대$/.test(b.n)).map(b => ({ ...b, d: dist(c, b.c) })).sort((a, b) => a.d - b.d).slice(0, n);
+const eta = m => Math.max(1, Math.round(m / 1000 / SPEED * 60));
+function centroid(f) { const Q = f.geometry.coordinates[0]; let x = 0, y = 0; for (const p of Q) { x += p[0]; y += p[1]; } return [x / Q.length, y / Q.length]; }
+function segD(p, a, b) { const k = Math.cos(p[1] * Math.PI / 180), ax = (a[0] - p[0]) * k, ay = a[1] - p[1], bx = (b[0] - p[0]) * k, by = b[1] - p[1], dx = bx - ax, dy = by - ay, l = dx * dx + dy * dy, t = l ? Math.max(0, Math.min(1, -(ax * dx + ay * dy) / l)) : 0; return Math.hypot(ax + dx * t, ay + dy * t) * Math.PI / 180 * R; }
+function roadAt(c) { let best = null; for (const f of D.r.features) { const Q = f.geometry.coordinates; for (let k = 1; k < Q.length; k++) { const d = segD(c, Q[k - 1], Q[k]); if (!best || d < best.d) best = { d, w: f.properties.w, n: f.properties.n }; } } return best; }
+// 고른 건물: 공식 윤곽을 반투명 상자로 덮어 표시(fire 면 주황)
+// 실사 건물 안에 묻히지 않게: 윤곽을 1m 밖으로 키운 반투명 상자 + 지붕 높이 테두리(가려도 보이게)
+function outline(f, color, alpha, tag) { const c = centroid(f), g = ground(c), h = f.properties.h, k = Math.cos(c[1] * Math.PI / 180), m = 1.2 / 111320;
+  const ring = f.geometry.coordinates[0].map(([x, y]) => { const dx = (x - c[0]) * k, dy = y - c[1], d = Math.hypot(dx, dy) || 1; return [x + dx / d * m / k, y + dy / d * m]; });
+  L.sel.entities.add({ polygon: { hierarchy: C.Cartesian3.fromDegreesArray(ring.flat()), height: g - 1, extrudedHeight: g + h + 1.5, material: col(color, alpha) } });
+  L.sel.entities.add({ polyline: { positions: ring.map(p => P3(p, g + h + 1.5)), width: 3, arcType: C.ArcType.NONE, material: col(color), depthFailMaterial: col(color, 0.6) } });
+  if (tag) L.sel.entities.add({ position: P3(c, g + h + 6), label: { ...lab(tag, color, 15), heightReference: C.HeightReference.NONE } }); }
+function openCard(f) { const p = f.properties, c = centroid(f); L.sel.entities.removeAll(); sel = f; outline(f, "#ffffff", 0.18);
+  for (const e of p.e || []) L.sel.entities.add({ position: P3(e), point: dotG("#35d07f", 11), label: lab("출입구", "#bff5d6", 11) });
+  const rd = roadAt((p.e && p.e[0]) || c), fire = near(c, "소방", 2), pol = near(c, "경찰", 1), er = near(c, "병원", 1);
+  const fl = {}; for (const [k, u] of p.fl || []) (fl[k] = fl[k] || []).push(u);
+  $("card").innerHTML = `<button class="x" aria-label="닫기" onclick="closeCard()">×</button>
+    <h2>출동 카드</h2><h3>${esc(p.n || p.a || "이름 없는 건물")}</h3><div class="addr">${esc(p.a)}</div>
+    <div class="kv"><div><b>${p.fu || "-"}층</b><span>지상</span></div><div><b>${p.fb ? "B" + p.fb : "없음"}</b><span>지하</span></div><div><b>${p.h}m</b><span>높이·${esc(p.hs)}</span></div>
+      <div><b>${p.ga ? p.ga.toLocaleString("ko-KR") : "-"}</b><span>연면적 ㎡</span></div><div><b>${esc(p.ap || "-")}</b><span>사용승인</span></div><div><b>${(p.e || []).length}곳</b><span>출입구</span></div></div>
+    <div class="row"><span>용도</span><span>${esc(p.u || "미상")}${p.g === "위험물" ? ' <span class="warn">위험물</span>' : ""}</span></div>
+    <div class="row"><span>구조</span><span>${esc(p.st || "-")}</span></div>
+    <div class="row"><span>앞 도로</span><span>${rd ? `${esc(rd.n || "이름 없는 길")} · 폭 ${rd.w}m${rd.w < 4 ? ' <span class="warn">소방차 진입 어려움</span>' : ""}` : "-"}</span></div>
+    <div class="sec"><h2>가까운 기관 <span class="tag">직선거리 · 도착 ${SPEED}km/h 가정</span></h2>
+      ${[...fire, ...pol, ...er].map(b => `<div class="row"><span>${esc(b.n)}</span><span>${(b.d / 1000).toFixed(1)}km · 약 ${eta(b.d)}분</span></div>`).join("")}</div>
+    <div class="sec"><h2>입주</h2><div class="row"><span>상가업소</span><span>${p.sn}곳</span></div>${p.fn ? `<div class="row"><span>등록 공장</span><span>${p.fn}곳</span></div>` : ""}${p.mn ? `<div class="row"><span>현장 확인</span><span>${p.mn}곳</span></div>` : ""}
+      ${(p.cat || []).length ? `<div class="row"><span>업종</span><span>${p.cat.map(([k, n]) => esc(k) + " " + n).join(" · ")}</span></div>` : ""}${(p.s1 || []).length ? `<div class="row"><span>1층</span><span>${p.s1.map(esc).join(", ")}</span></div>` : ""}</div>
+    ${Object.keys(fl).length ? `<div class="sec"><h2>층별 용도</h2>${Object.keys(fl).map(Number).sort((a, b) => b - a).map(k => `<div class="row"><span>${k < 0 ? "지하 " + -k : k}층</span><span>${esc([...new Set(fl[k])].join(", "))}</span></div>`).join("")}</div>` : ""}
+    <p class="src">출처: ${esc(D.src.b)} · 출입구 행정안전부 도로명주소 · ${esc(D.src.store)}. 높이 "추정"은 대장에 높이가 없어 층수로 잡은 값.</p>`;
+  $("card").classList.add("on"); V.scene.requestRender(); }
+function closeCard() { $("card").classList.remove("on"); sel = null; if (!inc) L.sel.entities.removeAll(); V.scene.requestRender(); }
+
+// ── 인파: 명소 150m 안의 폭 6m 미만 골목, 실시간 혼잡도에 따라 진하게
+function jamAlleys() { if (!L.jam) return; L.jam.entities.removeAll(); const hot = D.p.features.filter(f => f.properties.t === "명소").map(f => f.geometry.coordinates), lvl = LIVE ? ({ "여유": 0.45, "보통": 0.65, "약간 붐빔": 0.85, "붐빔": 1 }[LIVE.lvl] ?? 0.6) : 0.6;
+  for (const f of D.r.features) if (f.properties.w < 6 && f.geometry.coordinates.some(c => hot.some(h => dist(c, h) < 150)))
+    L.jam.entities.add({ polyline: { positions: C.Cartesian3.fromDegreesArray(f.geometry.coordinates.flat()), width: 6, clampToGround: true, material: col("#ffc845", lvl) } }); }
+async function live() {
+  const url = /localhost|127\.0\.0\.1/.test(location.hostname) ? "../data/live.json" : "https://raw.githubusercontent.com/CDragon03/seongsu-twin/live/live.json";
+  try { const j = await (await fetch(url + "?t=" + Math.floor(Date.now() / 300000), { cache: "no-store" })).json(), a = j.areas && j.areas["성수카페거리"]; if (!a) return; LIVE = a;
+    const cc = { "여유": "#35d07f", "보통": "#ffc845", "약간 붐빔": "#ff9a3d", "붐빔": "#ff5a4a" }[a.lvl] || "#9aabc2";
+    $("crowd").innerHTML = `<span class="dot" style="background:${cc}"></span><span>성수카페거리 <b>${esc(a.lvl)}</b> · ${Math.round(a.min).toLocaleString("ko-KR")}~${Math.round(a.max).toLocaleString("ko-KR")}명 · ${esc((a.time || "").slice(11))} 기준</span>`;
+    if (a.wx) $("wx").textContent = `${a.wx.temp}℃ · ${a.wx.sky || ""}${a.wx.pty && a.wx.pty !== "없음" ? " · " + a.wx.pty : ""} · 미세먼지 ${a.wx.air || "-"}`;
+    if (a.fcst && window.Chart) new Chart($("fc"), { type: "line", data: { labels: a.fcst.map(f => f[0].slice(11, 13) + "시"), datasets: [{ data: a.fcst.map(f => f[3]), borderColor: "#ffc845", borderWidth: 2, pointRadius: 0, tension: 0.35, fill: true,
+      backgroundColor: c => { const g = c.chart.ctx.createLinearGradient(0, 0, 0, 38); g.addColorStop(0, "rgba(255,200,69,.35)"); g.addColorStop(1, "rgba(255,200,69,0)"); return g; } }] },
+      options: { responsive: false, animation: false, plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => "최대 " + c.raw.toLocaleString("ko-KR") + "명" } } }, scales: { x: { display: false }, y: { display: false } } } });
+    jamAlleys();
+  } catch (e) { $("crowd").innerHTML = `<span class="dot" style="background:#6f809a"></span><span>실시간 인파 정보를 받지 못했습니다</span>`; } }
+
+// ── 길 그래프(도로구간) + 최단 경로
+let NODES = [], ADJ = [];
+function graph() { const idx = new Map(), key = c => c[0].toFixed(5) + "," + c[1].toFixed(5), id = c => { const k = key(c); if (!idx.has(k)) { idx.set(k, NODES.length); NODES.push(c); ADJ.push([]); } return idx.get(k); };
+  for (const f of D.r.features) { const Q = f.geometry.coordinates; for (let k = 1; k < Q.length; k++) { const a = id(Q[k - 1]), b = id(Q[k]), d = dist(Q[k - 1], Q[k]); ADJ[a].push([b, d]); ADJ[b].push([a, d]); } } }
+const nearNode = c => { let b = 0, bd = 1e12; NODES.forEach((n, i) => { const d = dist(c, n); if (d < bd && ADJ[i].length) { bd = d; b = i; } }); return b; };
+function path(s, t) { const n = NODES.length, d = new Float64Array(n).fill(Infinity), pv = new Int32Array(n).fill(-1), done = new Uint8Array(n); d[s] = 0;
+  for (;;) { let u = -1, m = Infinity; for (let i = 0; i < n; i++) if (!done[i] && d[i] < m) { m = d[i]; u = i; } if (u < 0 || u === t) break; done[u] = 1; for (const [v, w] of ADJ[u]) if (d[u] + w < d[v]) { d[v] = d[u] + w; pv[v] = u; } }
+  const P = []; for (let v = t; v >= 0; v = pv[v]) P.push(NODES[v]); return P.reverse(); }
+const routeTo = (from, to) => [from, ...path(nearNode(from), nearNode(to)), to];   // 구역 밖 기관은 구역 가장자리 길까지 곧게
+const lenOf = P => { const Q = [0]; for (let k = 1; k < P.length; k++) Q.push(Q[k - 1] + dist(P[k - 1], P[k])); return Q; };
+
+// ── 긴급 상황
+function arm(m) { if (inc) return; mode = mode === m ? null : m;
+  $("hint").textContent = mode === "fire" ? "불이 난 건물을 누르세요 (Esc 취소)" : mode === "crowd" ? "노란 점(인파 명소)을 누르세요 (Esc 취소)" : "건물을 누르면 출동 카드가 열립니다";
+  $("bFire").classList.toggle("on", mode === "fire"); $("bCrowd").classList.toggle("on", mode === "crowd"); }
+function logm(t) { $("log").insertAdjacentHTML("afterbegin", `<div><em>${new Date().toTimeString().slice(0, 8)}</em>${t}</div>`); $("log").classList.add("on"); }
+function begin(kind) { inc = { kind, t0: performance.now() }; mode = null; $("bEnd").hidden = false; $("bFire").disabled = $("bCrowd").disabled = true; $("bFire").classList.remove("on"); $("bCrowd").classList.remove("on");
+  $("hint").textContent = (kind === "fire" ? "화재 대응 중" : "인파 사고 대응 중") + " · 시뮬레이션(차량 대수·속도는 가정)"; }
+function dispatch(list, target, color, label, after) {
+  for (const b of list) { const P = routeTo(b.c, target), Q = lenOf(P), v = { P, L: Q, s: 0, c: color, n: b.n, label, after };
+    v.line = L.fx.entities.add({ polyline: { positions: C.Cartesian3.fromDegreesArray(P.flat()), width: 3, clampToGround: true, material: new C.PolylineDashMaterialProperty({ color: col(color, 0.9), dashLength: 14 }) } });
+    v.ent = L.veh.entities.add({ position: new C.CallbackProperty(() => P3(at(v)), false), point: { pixelSize: 13, color: col(color), outlineColor: col("#ffffff"), outlineWidth: 2.5, heightReference: C.HeightReference.CLAMP_TO_GROUND, disableDepthTestDistance: Number.POSITIVE_INFINITY },
+      label: { ...lab(label, "#ffffff", 11), distanceDisplayCondition: new C.DistanceDisplayCondition(0, 900) } });
+    veh.push(v); logm(`${esc(b.n)} ${label} 출동 · 길 ${(Q[Q.length - 1] / 1000).toFixed(1)}km · 약 ${eta(Q[Q.length - 1])}분`); }
+  if (!raf) tick(); }
+function at(v) { const s = Math.min(v.s, v.L[v.L.length - 1]); let k = 1; while (k < v.L.length - 1 && v.L[k] < s) k++; const a = v.P[k - 1], b = v.P[k], t = (s - v.L[k - 1]) / ((v.L[k] - v.L[k - 1]) || 1); return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t]; }
+function tick() { const now = performance.now(), dt = Math.min(0.1, (now - (tick.t || now)) / 1000); tick.t = now; const SIM = 12;   // 화면 1초 = 12초
+  for (const v of veh) { const end = v.L[v.L.length - 1]; if (v.s >= end) { if (!v.arr) { v.arr = 1; logm(`${esc(v.n)} ${v.label} 현장 도착`); v.after && v.after(v); } continue; } v.s += SPEED / 3.6 * dt * SIM; }
+  V.scene.requestRender(); raf = requestAnimationFrame(tick); }
+function pulse(c, color, r0) { const t0 = performance.now(); return L.fx.entities.add({ position: P3(c), ellipse: { semiMajorAxis: new C.CallbackProperty(() => r0 + r0 * 0.3 * Math.sin((performance.now() - t0) / 280), false), semiMinorAxis: new C.CallbackProperty(() => r0 + r0 * 0.3 * Math.sin((performance.now() - t0) / 280), false), material: col(color, 0.28) } }); }
+function startFire(f) { const p = f.properties, c = centroid(f); begin("fire"); openCard(f); L.sel.entities.removeAll(); outline(f, "#ff5a2e", 0.5, "화재");
+  logm(`<b>화재 발생</b> · ${esc(p.n || p.a)} (${p.fu || "?"}층${p.fb ? ", 지하 " + p.fb + "층" : ""})`);
+  const rd = roadAt(c); if (rd && rd.w < 4) logm(`<span class="warn">앞 도로 폭 ${rd.w}m · 소방차 진입 어려움</span>`);
+  pulse(c, "#ff6b3d", 30); dispatch(near(c, "소방", 3), c, "#ff6b3d", "소방차"); dispatch(near(c, "경찰", 1), c, "#4c8dff", "순찰차"); }
+function startCrowd(p, carto) { const c = [C.Math.toDegrees(carto.longitude), C.Math.toDegrees(carto.latitude)]; begin("crowd");
+  logm(`<b>인파 사고</b> · ${esc(p.n)} 앞${LIVE ? " · 성수카페거리 지금 " + esc(LIVE.lvl) : ""}`); pulse(c, "#ffc845", 45);
+  const er = near(c, "병원", 1)[0];
+  dispatch(near(c, "경찰", 2), c, "#4c8dff", "경찰");
+  dispatch(near(c, "소방", 3), c, "#35d07f", "구급차", v => { if (!er || v.back) return; v.back = true; setTimeout(() => { if (!inc) return; logm(`${esc(v.n)} 구급차 → ${esc(er.n)} 이송`);
+    const P = routeTo(c, er.c); Object.assign(v, { P, L: lenOf(P), s: 0, arr: 0, label: "구급차(이송)", after: null }); v.line.polyline.positions = C.Cartesian3.fromDegreesArray(P.flat()); }, 1500); }); }
+function endIncident() { if (!inc) return; const mins = Math.round((performance.now() - inc.t0) / 1000 * 12 / 60);
+  veh = []; cancelAnimationFrame(raf); raf = 0; tick.t = 0; L.fx.entities.removeAll(); L.veh.entities.removeAll(); L.sel.entities.removeAll(); if (sel) outline(sel, "#ffffff", 0.18);
+  logm(`<b>상황 종료</b> · 경과 약 ${mins}분(시뮬레이션 시간)`); inc = null; $("bEnd").hidden = true; $("bFire").disabled = $("bCrowd").disabled = false; arm(null); V.scene.requestRender(); }
+window.closeCard = closeCard; window.__twin = { get D() { return D; }, startFire, openCard, endIncident };   // 점검용
+})();
+</script>
+</body>
+</html>

@@ -53,10 +53,12 @@ for i, b in enumerate(B):
     for s in S: cat[s[1]] = cat.get(s[1], 0) + 1
     shop1 = [s[0] for s in S if s[4] == "1"][:6]
     pr = {"i": i, "h": round(b["h"], 1), "hs": "대장" if d.get("h") else "추정", "g": grp(d.get("use")), "u": d.get("use") or "",
-          "n": d.get("nm") or b.get("n") or "", "a": (d.get("road") or d.get("addr") or "").replace("서울특별시 성동구 ", ""),
+          "n": d.get("nm") or b.get("n") or "", "a": (d.get("road") or d.get("addr") or "").replace("서울특별시 성동구 ", ""), "ja": (d.get("addr") or "").replace("서울특별시 성동구 ", ""),
           "fu": d.get("fu") or b.get("f") or 0, "fb": d.get("fb") or 0, "ga": round(d.get("ga") or 0), "ap": (d.get("ap") or "")[:4], "st": d.get("st") or "",
           "sn": len(S), "fn": len(F), "mn": len({m[0] for m in MN}), "cat": sorted(cat.items(), key=lambda t: -t[1])[:4], "s1": shop1,
-          "fl": [[f[0], f[1]] for f in (d.get("fl") or []) if not re.search(r"복도|계단|승강기|화장실|홀", f[1])][:40],
+          "fl": [[f[0], f[1], round(f[2])] for f in (d.get("fl") or []) if not re.search(r"^(복도|계단|승강기|화장실|홀|통신실|방재실)", f[1])][:60],
+          # 층별 입주: [이름, 업종, 층, 호, 출처(s 상가·f 공장·m 현장 확인)]
+          "sl": ([[x[0], x[2], x[4], x[5], "s", x[1]] for x in S] + [[x[0], x[1], x[3], x[4], "f", x[2]] for x in F] + [[x[0], x[1], x[2], x[3], "m", x[4]] for x in MN])[:160],
           "e": [list(ll(e[0], e[1])) for e in ent.get(str(i), [])][:6]}
     feats.append({"type": "Feature", "geometry": {"type": "Polygon", "coordinates": [[list(ll(x, y)) for x, y in P.exterior.coords]]}, "properties": pr})
 # 지붕 색: 건물 안쪽(0.8m 들인) 픽셀 평균
@@ -66,6 +68,14 @@ RGB = np.zeros((len(feats) + 1, 3))
 for ch in range(3): RGB[:, ch] = np.bincount(lab.ravel(), weights=arr[..., ch].ravel().astype(float), minlength=len(feats) + 1) / np.maximum(cnt, 1)
 for k, f in enumerate(feats, 1): f["properties"]["rc"] = "#%02x%02x%02x" % tuple(int(v) for v in (RGB[k] if cnt[k] else (128, 128, 128)))
 print("건물", len(feats))
+# 1층 가게(상가업소 좌표, 층 1 또는 1층 건물의 층 미기재): 지도 위 업종 점
+shops = []
+for k, f in enumerate(feats):
+    i = f["properties"]["i"]; fu = f["properties"]["fu"]
+    for x in sto["b"].get(str(i), []):
+        if (x[4] == "1" or (x[4] == "" and fu <= 1)) and x[1] not in ("과학·기술", "시설관리·임대") and len(x) >= 8:
+            lo, la = ll(x[6], x[7]); shops.append({"type": "Feature", "geometry": {"type": "Point", "coordinates": [lo, la]}, "properties": {"n": x[0], "c": x[1], "k": x[2], "ho": x[5], "i": i}})
+print("1층 가게", len(shops))
 
 # ── 길: 도로구간 중심선(w = 반폭). 폭 4m 미만 = 소방차 진입 어려움(가정)
 roads = []
@@ -87,9 +97,20 @@ inb = lambda x, y, m=0: X0 - m <= x <= X1 + m and Y0 - m <= y <= Y1 + m
 O = city["official"]; T = J("transit.json")
 pts = []
 pts += [pt(s["x"], s["y"], t="역", n=s["name"] + "역", l=s.get("line", "")) for s in city["stations"] if inb(s["x"], s["y"], 300)]
-pts += [pt(e[0], e[1], t="출구", n=f"{e[3]}역 {e[2]}번 출구") for e in T["exit"] if inb(e[0], e[1])]
+pts += [pt(e[0], e[1], t="출구", n=f"{e[3]}역 {e[2]}번 출구", st=e[3]) for e in T["exit"] if inb(e[0], e[1], 300)]
 pts += [pt(b[0], b[1], t="버스", n=b[2], ars=b[3]) for b in T["bus"] if inb(b[0], b[1])]
-pts += [pt(c[0], c[1], t="CCTV", n=c[2]) for c in O["cam"] if inb(c[0], c[1])]
+WL = [LineString(list(zip(w["p"][0::2], w["p"][1::2]))) for w in city["ways"] if len(w["p"]) >= 4]
+def face(x, y):
+    P = Point(x, y); L = min(WL, key=lambda l: l.distance(P)); q = L.interpolate(L.project(P)); dx, dy = q.x - x, q.y - y
+    return round((math.degrees(math.atan2(dx, dy)) + 360) % 360) if (dx or dy) else 0
+pts += [pt(c[0], c[1], t="CCTV", n=c[2], dir=face(c[0], c[1])) for c in O["cam"] if inb(c[0], c[1])]
+# 어린이보호구역 안전표지판(성동구 실제 위치 756곳) · 같은 자리 겹침은 하나로
+seen = set(); sg = []
+for x, y in O["sg"]:
+    k = (round(x, 1), round(y, 1))
+    if k in seen: continue
+    seen.add(k); sg.append(pt(x, y, t="표지판", n="어린이보호구역 안전표지판"))
+pts += sg; print("표지판", len(O["sg"]), "겹침 뺀 수", len(sg))
 pts += [pt(s["x"], s["y"], t="대피", n=s["n"], k=s["t"]) for s in city.get("shelters", []) if inb(s["x"], s["y"])]
 FAC = [f for f in city["facilities"]]
 pts += [pt(f["x"], f["y"], t="소방" if f["k"] == "fire" else "경찰", n=f["n"], k=f["t"]) for f in FAC if inb(f["x"], f["y"], 1500)]
@@ -109,7 +130,7 @@ out = {"src": {"b": "국토교통부 GIS건물통합정보(2026-11) · 건축물
                "store": sto.get("src", ""), "cam": "서울시 CCTV 설치 현황", "fac": "서울시 소방서·119안전센터 / OpenStreetMap 경찰"},
        "ortho": ortho_corners, "bbox": [list(ll(X0, Y0)), list(ll(X1, Y1))], "center": list(ll(200, 60)),
        "b": {"type": "FeatureCollection", "features": feats}, "r": {"type": "FeatureCollection", "features": roads},
-       "via": {"type": "FeatureCollection", "features": via}, "p": {"type": "FeatureCollection", "features": pts + hot}, "base": base}
+       "via": {"type": "FeatureCollection", "features": via}, "p": {"type": "FeatureCollection", "features": pts + hot}, "base": base, "shop": {"type": "FeatureCollection", "features": shops}}
 json.dump(out, open(os.path.join(M, "data.json"), "w", encoding="utf-8"), ensure_ascii=False, separators=(",", ":"))
 print("길", len(roads), "좁은 길", sum(r["properties"]["nar"] for r in roads), "고가", len(via), "점", len(pts), "명소", len(hot),
       "data.json", round(os.path.getsize(os.path.join(M, "data.json")) / 1e6, 2), "MB", "ortho.jpg", round(os.path.getsize(os.path.join(M, "ortho.jpg")) / 1e6, 2), "MB")
