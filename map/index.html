@@ -54,6 +54,11 @@ body.hudOff #hudL,body.hudOff #hudR,body.cardOn #hudR,body.inc #hudL{display:non
 .btn:hover{border-color:#9aabc2}.btn:focus-visible,.seg button:focus-visible{outline:2px solid var(--crowd);outline-offset:2px}
 .btn.fire{border-color:var(--fire);color:#ffd2c2}.btn.crowd{border-color:var(--crowd);color:#ffe9b0}
 .btn.crash{border-color:#ff4f6d;color:#ffc6d0}.btn.start{background:#35d07f;border-color:#35d07f;color:#05140b;font-weight:800;padding:8px 16px}
+#srcp{left:50%;top:50%;transform:translate(-50%,-50%);width:min(860px,calc(100% - 28px));max-height:calc(100% - 140px);overflow:auto;padding:18px 20px;z-index:45;font-size:13px}
+#srcp h3{margin:0 0 4px;font-size:18px}#srcp .lead{color:var(--muted);margin:0 0 12px;line-height:1.6}#srcp h4{margin:16px 0 6px;font-size:12px;color:#ffd84d;font-weight:700}
+#srcp table{width:100%;border-collapse:collapse}#srcp td{padding:6px 8px;border-bottom:1px solid var(--line);vertical-align:top;line-height:1.5}#srcp td:first-child{width:150px;color:var(--text);font-weight:600}#srcp td:nth-child(3){width:150px;color:var(--muted);white-space:nowrap}
+#srcp .tag{display:inline-block;font-size:11px;padding:1px 7px;border-radius:999px;margin-left:4px}#srcp .live{background:rgba(53,208,127,.18);color:#7ff0b3}#srcp .asm{background:rgba(255,154,61,.18);color:#ffc28a}
+#srcp .x{position:absolute;right:12px;top:8px;background:none;border:0;color:var(--muted);font-size:22px;cursor:pointer}
 .bdg{font:700 12.5px "Pretendard Variable",Pretendard,sans-serif;color:#fff;padding:3px 10px 3px 8px;border-radius:999px;white-space:nowrap;box-shadow:0 2px 8px rgba(0,0,0,.5);border:1.5px solid rgba(255,255,255,.85);cursor:pointer;display:flex;align-items:center;gap:5px;transform:translateY(-14px)}
 .bdg i{font-style:normal;font-size:10.5px;opacity:.9;font-weight:800}.bdg.st{background:#00a84d;font-size:14px}.bdg.st.bd{background:#d59400}.bdg.fire{background:#e0402a}.bdg.pol{background:#2f6fe0}.bdg.er{background:#119c8a}
 #tl{left:50%;transform:translateX(-50%);top:86px;padding:10px 14px;min-width:520px;max-width:calc(100% - 28px)}
@@ -136,11 +141,13 @@ body.hudOff #hudL,body.hudOff #hudR,body.cardOn #hudR,body.inc #hudL{display:non
   <div class="hp"><h4>건물 주용도<em id="hUseN"></em></h4><div class="hcv"><canvas id="hC3"></canvas></div></div><div class="hp"><h4>전기 사용량 많은 곳<em>건축HUB · kWh</em></h4><div class="hcv"><canvas id="hC4"></canvas></div></div></div>
 <section id="log" class="pn" aria-label="훈련 기록"></section>
 <section id="tl" class="pn" aria-live="polite" hidden></section>
+<section id="srcp" class="pn" role="dialog" aria-label="자료 출처" hidden></section>
 
 <nav id="ops" class="pn" aria-label="긴급 상황">
   <span class="hint" id="hint">건물을 누르면 출동 카드가 열립니다</span>
   <button class="btn" id="bLay" aria-expanded="false">지도 표시</button>
   <button class="btn on" id="bHud">HUD 켜짐</button>
+  <button class="btn" id="bSrc" aria-expanded="false">자료 출처</button>
   <button class="btn" id="bMenu" aria-expanded="false">훈련</button>
   <span id="emg" hidden><button class="btn fire" data-tr="fire">화재 훈련</button> <button class="btn crowd" data-tr="crowd">인파 밀집 훈련</button> <button class="btn crash" data-tr="crash">교통사고 훈련</button></span>
   <button class="btn start" id="bStart" hidden>▶ 시작</button>
@@ -379,6 +386,24 @@ function badges() { for (const f of D.p.features) { const p = f.properties, k = 
     el.title = p.n + (p.k ? " · " + p.k : ""); el.onclick = ev => { ev.stopPropagation(); if (k === "st") openStation(p.n.replace(/역$/, "")); else new maplibregl.Popup({ closeButton: false, offset: 18 }).setLngLat(f.geometry.coordinates).setHTML(`<b>${esc(p.n)}</b><br><span style="color:#9aabc2">${esc(p.t)}${p.k ? " · " + esc(p.k) : ""}${p.tel ? " · " + esc(p.tel) : ""}</span>`).addTo(map); };
     const m = new maplibregl.Marker({ element: el, anchor: "bottom" }).setLngLat(f.geometry.coordinates).addTo(map); (k === "st" ? BDG.tr : BDG.base).push(m); }
   for (const id of ["l-st", "l-base"]) map.setLayoutProperty(id, "visibility", "none"); }
+// ── 자료 출처 창: 화면에 보이는 모든 자료가 어디서 왔는지, 언제 기준인지, 무엇이 가정인지
+function srcPanel() { const S = SAFE ? SAFE.src : {}, L = '<span class="tag live">실시간</span>', A = '<span class="tag asm">가정</span>';
+  const G = [
+    ["지도 바탕", [["건물 윤곽·높이", D.src.b, "2026-11"], ["층별 용도·면적", "국토교통부 건축HUB 건축물대장 층별개요", "조회 시점"], ["도로·골목", D.src.road + " · 도로 폭은 실폭도로 기준", "2026-11"], ["바닥 항공사진·지붕 색", D.src.ortho, "2025"], ["출입구", "행정안전부 도로명주소 출입구(TL_SPBD_ENTRC) · 브이월드", "2026-11"], ["배경지도(구역 밖)", "CARTO · OpenStreetMap", "-"]]],
+    ["입주 업체", [["상가업소", D.src.store, "분기"], ["등록 공장", "서울 성동구 공장등록현황(공공데이터포털)", "-"], ["현장 확인", "입주사 직접 확인(공공 자료에 없는 업체)", "2026-11-17"]]],
+    ["실시간", [["인파·혼잡 예측·도로 속도·날씨", "서울 열린데이터광장 실시간 도시데이터(성수카페거리) " + L, "10분마다"], ["주차장", "서울 실시간 도시데이터 장소별 주차장 " + L, "10분마다"], ["지하철 도착", "서울 열린데이터광장 지하철 실시간 도착정보(공개판에서만) " + L, "20초"], ["대기(미세먼지)", "서울 실시간 대기환경 " + L, "10분마다"]]],
+    ["교통", [["지하철 시간표", "서울 열린데이터광장 역코드로 지하철 열차 시간표(OA-101) · 서울숲은 국토교통부 TAGO", "-"], ["지하철 출구", "OpenStreetMap", "-"], ["버스정류장", "서울 열린데이터광장 버스정류소 위치정보 · 실시간 도착은 공공데이터포털 승인 대기", "-"]]],
+    ["안전 시설", [["소방서·119안전센터", D.src.fac, "2025"], ["응급실", "서울 열린데이터광장 병의원 위치 정보(TbHospitalInfo) 중 응급실 운영", "-"],
+      ["소방용수시설", S.fw || "-", "2026"], ["비상소화장치", S.eh || "-", "매주"], ["AED", S.aed || "-", "매월"], ["안전비상벨", S.bell || "-", "-"],
+      ["CCTV", D.src.cam + " · 비추는 방향은 가까운 길 쪽으로 " + A, "2022-12-15"], ["어린이보호구역 표지판", S.sg || "성동구 어린이보호구역 주변 교통안전시설(2022-12-15)", "2022-12-15"], ["어린이보호구역 학교", S.sz || "-", "2022-12-15"],
+      ["대피 장소", S.sh || "-", "-"], ["재난약자 시설", (S.vul || "-") + " · 도로명주소로 건물에 붙임(어린이집 자료는 이용 조건 때문에 뺌)", "-"], ["위험물 시설", S.hz || "-", "-"], ["과거 침수 흔적", S.fl || "-", "-"]]],
+    ["화면 그래프(HUD)", [["업종 분포·건물 주용도·전기 사용량", "건물통합정보 · 소상공인 상가정보 · 건축HUB 건물에너지", "-"]]],
+    ["가정값(화면에 「가정」으로 표기)", [["소방차 진입 어려운 길", "도로 폭 4m 미만 " + A, ""], ["층 높이", "대장 높이 ÷ 지상층수로 고르게 나눔 " + A, ""], ["건물 높이 「추정」", "대장에 높이가 없는 건물은 층수로 잡음 " + A, ""],
+      ["출동·훈련", "차량 시속 30km, 출동 준비 1분, 번짐·진압 속도, 대응단계 기준(3·8·20동), 인파 유입 속도·단계 인원(60·120·180명), 교통사고 처리 10분 " + A, ""], ["도착 시간(출동 카드)", "직선거리 ÷ 시속 30km " + A, ""]]]];
+  $("srcp").innerHTML = `<button class="x" aria-label="닫기">×</button><h3>자료 출처</h3><p class="lead">화면에 보이는 정보는 모두 아래 공공데이터에서 가져왔습니다. 실시간 표시가 없는 자료는 받은 시점 기준이라 지금과 다를 수 있고, 「가정」은 공식 기준이 없어 정한 값입니다.</p>`
+    + G.map(([h, rows]) => `<h4>${h}</h4><table>${rows.map(r => `<tr><td>${r[0]}</td><td>${r[1]}</td><td>${r[2] || ""}</td></tr>`).join("")}</table>`).join("");
+  $("srcp").querySelector(".x").onclick = () => toggleSrc(false); }
+function toggleSrc(on) { if (on) srcPanel(); $("srcp").hidden = !on; $("bSrc").classList.toggle("on", on); $("bSrc").setAttribute("aria-expanded", on); }
 // ── 화면 조작
 function ui() {
   document.querySelectorAll("[data-c]").forEach(b => b.onclick = () => { document.querySelectorAll("[data-c]").forEach(x => x.classList.toggle("on", x === b));
@@ -389,10 +414,11 @@ function ui() {
     for (const m of BDG[c.dataset.l] || []) m.getElement().style.display = c.checked ? "" : "none"; });
   ["cctv", "cctv-dir", "shel", "sign"].forEach(id => map.setLayoutProperty(id, "visibility", "none"));   // 옛 대피 점(shel)은 늘 숨김 · 체크는 새 「sh」를 켬
   $("bLay").onclick = () => { const o = !$("lay").classList.contains("on"); $("lay").classList.toggle("on", o); $("bLay").classList.toggle("on", o); $("bLay").setAttribute("aria-expanded", o); };
+  $("bSrc").onclick = () => toggleSrc($("srcp").hidden);
   $("bHud").onclick = () => { const off = document.body.classList.toggle("hudOff"); $("bHud").classList.toggle("on", !off); $("bHud").textContent = off ? "HUD" : "HUD 켜짐"; Object.values(hch).forEach(c => c.resize()); };
   $("bMenu").onclick = () => { const o = $("emg").hidden; $("emg").hidden = !o; $("bMenu").setAttribute("aria-expanded", o); if (!o) arm(null); };
   document.querySelectorAll("#emg [data-tr]").forEach(b => b.onclick = () => arm(b.dataset.tr)); $("bStart").onclick = begin; $("bEnd").onclick = endIncident;
-  addEventListener("keydown", e => { if (e.key === "Escape") { if (inc) return; if (mode) arm(null); else closeCard(); } });   // 진행 중 훈련은 [종료] 버튼으로만 끝냄
+  addEventListener("keydown", e => { if (e.key === "Escape") { if (!$("srcp").hidden) return toggleSrc(false); if (inc) return; if (mode) arm(null); else closeCard(); } });   // 진행 중 훈련은 [종료] 버튼으로만 끝냄
 }
 // ── 출동 카드
 const near = (c, t, n) => D.base.filter(b => b.t === t && !/수난구조|특수구조|구조대$/.test(b.n)).map(b => ({ ...b, d: dist(c, b.c) })).sort((a, b) => a.d - b.d).slice(0, n);

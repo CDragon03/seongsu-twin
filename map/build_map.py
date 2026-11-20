@@ -127,7 +127,7 @@ for lab_, key in HOT:
     if inb(cx, cy): hot.append(pt(cx, cy, t="명소", n=lab_, i=ix))
 # 길 이름표: 이름별로 가장 긴 토막 하나
 out = {"src": {"b": "국토교통부 GIS건물통합정보(2026-11) · 건축물대장", "ortho": "국토지리정보원 정사영상 2025", "road": "행정안전부 도로구간",
-               "store": sto.get("src", ""), "cam": "서울시 CCTV 설치 현황", "fac": "서울시 소방서·119안전센터 / OpenStreetMap 경찰"},
+               "store": sto.get("src", ""), "cam": "성동구 어린이보호구역 주변 교통안전시설 중 교통단속카메라(공공데이터포털, 2022-12-15)", "fac": "서울 열린데이터광장 소방서 안전센터 구조대 위치정보(OA-21072, 2025) / 경찰: OpenStreetMap"},
        "ortho": ortho_corners, "bbox": [list(ll(X0, Y0)), list(ll(X1, Y1))], "center": list(ll(200, 60)),
        "b": {"type": "FeatureCollection", "features": feats}, "r": {"type": "FeatureCollection", "features": roads},
        "via": {"type": "FeatureCollection", "features": via}, "p": {"type": "FeatureCollection", "features": pts + hot}, "base": base, "shop": {"type": "FeatureCollection", "features": shops}}

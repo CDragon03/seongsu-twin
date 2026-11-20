@@ -31,6 +31,7 @@ for r in list(ws.iter_rows(values_only=True))[1:]:
     lo, la = inv.transform(float(r[4]), float(r[5]))
     if inb(lo, la): out["eh"].append(pt(lo, la, n=str(r[6] or ""), up=str(r[9] or "")[:8]))
 out["src"]["eh"] = "서울시 비상소화장치 위치정보 · 서울 열린데이터광장 OA-21071"
+out["src"]["sg"] = "성동구 어린이보호구역 주변 교통안전시설 중 안전표지판(공공데이터포털, 2022-12-15)"
 # 안전비상벨(행정안전부 안전비상벨위치정보 · 서울특별시 파일, 공공데이터포털에서 받음)
 out["bell"] = []
 b = open(os.path.join(S, "bell_seoul.csv"), "rb").read().decode("cp949", errors="replace")
@@ -91,10 +92,10 @@ for f in fl["features"]:
 out["src"]["fl"] = fl["source"]
 # 대피 장소: 지진옥외대피장소 / 이재민 임시주거시설
 out["sh"] = [pt(*ll(s_["x"], s_["y"]), k="지진옥외대피장소" if s_["k"] == "outdoor" else "이재민 임시주거시설", n=s_["n"], t=s_["t"], a=s_["a"], c=s_["c"]) for s_ in city["shelters"] if inb(*ll(s_["x"], s_["y"]))]
-out["src"]["sh"] = "행정안전부 지진옥외대피장소 · 이재민 임시주거시설(성동구)"
+out["src"]["sh"] = "성동구 지진옥외대피장소 현황(2026-07-23) · 임시주거시설(2025-09-12), 공공데이터포털 · 좌표는 시설 이름으로 OpenStreetMap에서 찾음"
 # 어린이보호구역 대상 학교
 out["sz"] = [pt(*ll(z[0], z[1]), n=z[2] + z[3]) for z in city["official"]["sz"] if inb(*ll(z[0], z[1]))]
-out["src"]["sz"] = "성동구 어린이보호구역 지정 현황"
+out["src"]["sz"] = "성동구 어린이보호구역 주변 교통안전시설(공공데이터포털, 2022-12-15)"
 for k in ("fw", "eh", "aed", "vul", "bell", "hz", "fl", "sh", "sz"): out[k] = {"type": "FeatureCollection", "features": out[k]}
 json.dump(out, open(os.path.join(M, "safety.json"), "w", encoding="utf-8"), ensure_ascii=False, separators=(",", ":"))
 print("소방용수", len(out["fw"]["features"]), "비상소화장치", len(out["eh"]["features"]), "AED", len(out["aed"]["features"]), "비상벨", len(out["bell"]["features"]), "위험물", len(out["hz"]["features"]), "침수흔적", len(out["fl"]["features"]), "대피", len(out["sh"]["features"]), "보호구역", len(out["sz"]["features"]), "재난약자", out["stat"], round(os.path.getsize(os.path.join(M, "safety.json")) / 1e3), "KB")
